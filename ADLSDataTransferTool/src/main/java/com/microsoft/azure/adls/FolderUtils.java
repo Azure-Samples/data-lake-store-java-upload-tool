@@ -18,10 +18,6 @@ class FolderUtils {
   private static final String INPROGRESS_EXTENSION = ".inprogress";
   private static final String COMPLETED_EXTENSION = ".completed";
 
-  private static void printAllPaths(Stream<Path> pathStream) {
-    pathStream.forEach(System.out::println);
-  }
-
   /**
    * Predicate that checks if path matches glob pattern.
    *
@@ -47,6 +43,27 @@ class FolderUtils {
   }
 
   /**
+   * Moves the file from source to target path using the copy options specified.
+   *
+   * @param sourcePath Source
+   * @param targetPath Target
+   * @param copyOption CopyOption used during move
+   */
+  static void move(Path sourcePath, Path targetPath, CopyOption copyOption) {
+    try {
+      Files.move(sourcePath, targetPath, copyOption);
+      logger.debug("Moved file {} to {}",
+          sourcePath.toString(),
+          targetPath.toString());
+    } catch (IOException ioe) {
+      logger.error("Moving file {} to {} failed with exception: {}",
+          sourcePath,
+          targetPath,
+          ioe.getMessage());
+    }
+  }
+
+  /**
    * Check if the path is partially processed.
    *
    * @return Predicate that checks if path is partially processed
@@ -65,19 +82,20 @@ class FolderUtils {
    *
    * @param rootFolder Root of the source folder structure
    * @param filter     Regular expression to match the files
+   * @return Stream of file path that qualify for processing
    */
-  static void getFiles(String rootFolder,
-                       String filter) throws IOException {
+  static Stream<Path> getFiles(String rootFolder,
+                               String filter) {
     assert (rootFolder != null);
     assert (!rootFolder.trim().isEmpty());
     assert (filter != null);
     assert (!filter.trim().isEmpty());
 
+    Stream<Path> streamOfPaths = Stream.empty();
+    boolean isPreviousPartialAttemptCleanedUp = false;
+
     Path root = Paths.get(rootFolder);
     if (Files.exists(root)) {
-      // Setup the glob path matches
-      PathMatcher pathMatcher = root.getFileSystem().getPathMatcher("glob:" + filter);
-
       // First, move all the partially uploaded files to original state
       try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
         Stream<Path> ps = paths.filter(isFilePartial());
@@ -86,44 +104,40 @@ class FolderUtils {
               path
                   .toString()
                   .replace(INPROGRESS_EXTENSION, ""));
-
           logger.debug("Attempting to move partially processed file {} to {}",
               path.toString(),
               targetPath.toString());
-          try {
-            Files.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            logger.debug("Moved partially processed file {} to {}",
-                path.toString(),
-                targetPath.toString());
-          } catch (IOException ioe) {
-            logger.error("Moving partially processed file {} to {} failed with exception: {}",
-                path,
-                targetPath,
-                ioe.getMessage());
-          }
+
+          move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
         });
+        isPreviousPartialAttemptCleanedUp = true;
       } catch (IOException ioe) {
         logger.error("Scanning the source folder {} failed with exception: {}",
             rootFolder,
             ioe.getMessage());
-        throw ioe;
       }
 
+      // Re-scan to account for files that were mutated by the previous step
       // Second, ignore all the processed files
       // Finally, apply the glob pattern and prepare the stream
-      try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
-        Stream<Path> ps = paths
-            .filter(isFileQualityForProcessing())
-            .filter(doesFileMatchGlob(pathMatcher));
-        printAllPaths(ps);
-      } catch (IOException ioe) {
-        logger.error("Scanning the source folder {} failed with exception: {}",
-            rootFolder,
-            ioe.getMessage());
-        throw ioe;
+      if (isPreviousPartialAttemptCleanedUp) {
+        try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
+          PathMatcher pathMatcher = root.getFileSystem().getPathMatcher("glob:" + filter);
+          streamOfPaths = paths
+              .filter(isFileQualityForProcessing())
+              .filter(doesFileMatchGlob(pathMatcher));
+        } catch (IOException ioe) {
+          logger.error("Scanning the source folder {} failed with exception: {}",
+              rootFolder,
+              ioe.getMessage());
+        }
+      } else {
+        logger.error("Partial uploads could not be cleaned up. Skipping processing.");
       }
     } else {
-      logger.error("Root folder {} does not exist or is not accessible", rootFolder);
+      logger.info("Root folder {} does not exist or is not accessible", rootFolder);
     }
+
+    return streamOfPaths;
   }
 }

@@ -11,15 +11,15 @@ import java.net.URISyntaxException;
  * Helper class to assist with command line argument parsing.
  */
 public class Cli {
-  static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
-  static final String FOOTER = "Please report issues @ https://www.github.com/gandhinath/DataUploadTools";
   static final String SOURCE = "s";
   static final String DESTINATION = "d";
   static final String WILDCARD = "w";
   static final String REPROCESS = "r";
-  static final String NUMBER_OF_THREADS = "n";
-  static final String HELP = "h";
-  static final Logger logger = LoggerFactory.getLogger(Cli.class.getName());
+  static final String DESIRED_PARALLELISM = "p";
+  private static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
+  private static final String FOOTER = "Please report issues @ https://www.github.com/gandhinath/DataUploadTools";
+  private static final String HELP = "h";
+  private static final Logger logger = LoggerFactory.getLogger(Cli.class.getName());
   static String APPLICATION;
 
   static {
@@ -113,21 +113,21 @@ public class Cli {
         .type(String.class)
         .build();
 
-    Option numberOfThreadsOption = Option.builder(NUMBER_OF_THREADS)
-        .argName("numberOfThreads")
+    Option desiredParallelism = Option.builder(DESIRED_PARALLELISM)
+        .argName("desiredParallelism")
         .hasArg()
-        .required(true)
-        .longOpt("numberOfThreads")
-        .desc("Number of parallel upload threads. "
+        .required(false)
+        .longOpt("desiredParallelism")
+        .desc("Desired level of parallelism. "
             + "This will impact your available network bandwidth")
-        .type(Short.class)
+        .type(int.class)
         .build();
 
     options.addOption(sourceOption);
     options.addOption(destinationOption);
     options.addOption(wildcardOption);
     options.addOption(reprocessOption);
-    options.addOption(numberOfThreadsOption);
+    options.addOption(desiredParallelism);
 
     return options;
   }
