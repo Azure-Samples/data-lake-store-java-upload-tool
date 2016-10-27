@@ -5,7 +5,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -75,27 +78,15 @@ class FolderUtils {
   }
 
   /**
-   * Walks the root folder, identifies all the files that need
-   * to be uploaded.
-   * <p>
-   * Be aware: This method does mutate the files to manage state.
+   * Cleans up partially uploaded files.
    *
    * @param rootFolder Root of the source folder structure
-   * @param filter     Regular expression to match the files
-   * @return Stream of file path that qualify for processing
+   * @return True if the partially processed files are cleaned up
    */
-  static Stream<Path> getFiles(String rootFolder,
-                               String filter) {
-    assert (rootFolder != null);
-    assert (!rootFolder.trim().isEmpty());
-    assert (filter != null);
-    assert (!filter.trim().isEmpty());
+  static boolean cleanUpPartitiallyUploadedFiles(String rootFolder) {
+    boolean isPartitiallyUploadedFilesCleanedUp = false;
 
-    Stream<Path> streamOfPaths = Stream.empty();
-    boolean isPreviousPartialAttemptCleanedUp = false;
-
-    Path root = Paths.get(rootFolder);
-    if (Files.exists(root)) {
+    if (Files.exists(Paths.get(rootFolder))) {
       // First, move all the partially uploaded files to original state
       try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
         Stream<Path> ps = paths.filter(isFilePartial());
@@ -110,34 +101,57 @@ class FolderUtils {
 
           move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
         });
-        isPreviousPartialAttemptCleanedUp = true;
+        ps.close();
+        isPartitiallyUploadedFilesCleanedUp = true;
       } catch (IOException ioe) {
         logger.error("Scanning the source folder {} failed with exception: {}",
             rootFolder,
             ioe.getMessage());
       }
+    } else {
+      logger.info("Root folder {} does not exist or is not accessible", rootFolder);
+    }
 
+    return isPartitiallyUploadedFilesCleanedUp;
+  }
+
+  /**
+   * Walks the root folder, identifies all the files that need
+   * to be uploaded.
+   *
+   * @param rootFolder Root of the source folder structure
+   * @param filter     Regular expression to match the files
+   * @return List of file path that qualify for processing
+   */
+  static List<Path> getFiles(String rootFolder,
+                             String filter) {
+    assert (rootFolder != null);
+    assert (!rootFolder.trim().isEmpty());
+    assert (filter != null);
+    assert (!filter.trim().isEmpty());
+
+    List<Path> pathList = new ArrayList<>();
+    Path root = Paths.get(rootFolder);
+
+    if (Files.exists(root)) {
       // Re-scan to account for files that were mutated by the previous step
       // Second, ignore all the processed files
       // Finally, apply the glob pattern and prepare the stream
-      if (isPreviousPartialAttemptCleanedUp) {
-        try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
-          PathMatcher pathMatcher = root.getFileSystem().getPathMatcher("glob:" + filter);
-          streamOfPaths = paths
-              .filter(isFileQualityForProcessing())
-              .filter(doesFileMatchGlob(pathMatcher));
-        } catch (IOException ioe) {
-          logger.error("Scanning the source folder {} failed with exception: {}",
-              rootFolder,
-              ioe.getMessage());
-        }
-      } else {
-        logger.error("Partial uploads could not be cleaned up. Skipping processing.");
+      try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
+        PathMatcher pathMatcher = root.getFileSystem().getPathMatcher("glob:" + filter);
+        pathList = paths
+            .filter(isFileQualityForProcessing())
+            .filter(doesFileMatchGlob(pathMatcher))
+            .collect(Collectors.toList());
+      } catch (IOException ioe) {
+        logger.error("Scanning the source folder {} failed with exception: {}",
+            rootFolder,
+            ioe.getMessage());
       }
     } else {
       logger.info("Root folder {} does not exist or is not accessible", rootFolder);
     }
 
-    return streamOfPaths;
+    return pathList;
   }
 }

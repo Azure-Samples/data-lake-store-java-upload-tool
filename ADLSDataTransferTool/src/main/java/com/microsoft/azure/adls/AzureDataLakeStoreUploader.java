@@ -6,11 +6,14 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
+import java.util.stream.Collectors;
+
+import static java.util.stream.Collectors.toList;
 
 /**
  * AzureDataLakeStoreUploader is responsible for uploading the stream of local files
@@ -24,13 +27,18 @@ class AzureDataLakeStoreUploader {
       AzureDataLakeStoreUploader.class.getName());
 
   private final ExecutorService executorServicePool;
+  private final Path sourceRoot;
 
   /**
    * Constructor that initializes the executor services for the ADLS file uploader.
    *
    * @param parallelism Parallelism level
+   * @param sourceRoot  Root path of the source folder. Used to compute the path
+   *                    in Azure Data Lake Storage
    */
-  AzureDataLakeStoreUploader(int parallelism) {
+  AzureDataLakeStoreUploader(Path sourceRoot,
+                             int parallelism) {
+    this.sourceRoot = sourceRoot;
     executorServicePool = Executors.newWorkStealingPool(parallelism);
   }
 
@@ -81,24 +89,38 @@ class AzureDataLakeStoreUploader {
    * @return Source path
    */
   private Path uploadToAzureDataLakeStore(Path path) {
-    logger.info("Uploading {} to Azure", path);
+    logger.debug("Initiating upload of {} to Azure", path);
+    logger.debug("Completing upload of {} to Azure", path);
     return path;
   }
 
   /**
    * Orchestrates the upload to Azure Data Lake Storage.
    *
-   * @param inputPathStream Path stream of source file that qualify for upload
+   * @param inputPathList List of source file path that qualify for upload
    */
-  void upload(Stream<Path> inputPathStream) {
-    Stream<CompletableFuture<Path>> completableFutureStream = inputPathStream.map(
+  void upload(List<Path> inputPathList) {
+    // ThenApply ensures that the code executes on the same
+    // thread as it's predecessor
+    List<CompletableFuture<Path>> completableFutureList = inputPathList.stream().map(
         sourcePath ->
             CompletableFuture.supplyAsync(() ->
-                this.setStatusToInProgress(sourcePath), this.executorServicePool))
-        .map(pathToUpload -> pathToUpload.thenApply(
-            this::uploadToAzureDataLakeStore))
-        .map(inProgressPath -> inProgressPath.thenApply(
-            this::setStatusToCompleted));
+                this.setStatusToInProgress(sourcePath), this.executorServicePool)
+                .thenApply(this::uploadToAzureDataLakeStore)
+                .thenApply(this::setStatusToCompleted))
+        .collect(toList());
+
+    // Wait for all the futures to be complete
+    // and translate the result into an array
+    CompletableFuture<Void> allDoneFuture =
+        CompletableFuture.allOf(
+            completableFutureList.toArray(
+                new CompletableFuture[completableFutureList.size()]));
+
+    allDoneFuture.thenApply(v ->
+        completableFutureList.stream()
+            .map(CompletableFuture::join)
+            .collect(Collectors.toList()));
   }
 
   /**
@@ -110,7 +132,7 @@ class AzureDataLakeStoreUploader {
   void terminate(long timeoutInSeconds) {
     if (!executorServicePool.isShutdown() && !executorServicePool.isTerminated()) {
       try {
-        logger.info("Attempting graceful shutdown of the executor service.", executorServicePool);
+        logger.debug("Attempting graceful shutdown of the executor service.", executorServicePool);
         executorServicePool.shutdown();
         executorServicePool.awaitTermination(timeoutInSeconds, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
@@ -119,13 +141,13 @@ class AzureDataLakeStoreUploader {
             timeoutInSeconds);
       } finally {
         if (!executorServicePool.isTerminated()) {
-          logger.info("Forcing shutdown of the executor service.");
+          logger.debug("Forcing shutdown of the executor service.");
           executorServicePool.shutdownNow();
         }
-        logger.info("Shutdown of the executor service completed.");
+        logger.debug("Shutdown of the executor service completed.");
       }
     } else {
-      logger.info("Executor service has already shutdown.");
+      logger.debug("Executor service has already shutdown.");
     }
   }
 }

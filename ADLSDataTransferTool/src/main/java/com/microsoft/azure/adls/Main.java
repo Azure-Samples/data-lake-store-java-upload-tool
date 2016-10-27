@@ -6,7 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.stream.Stream;
+import java.nio.file.Paths;
+import java.util.List;
 
 public class Main {
   private static final Logger logger = LoggerFactory.getLogger(Main.class.getName());
@@ -42,16 +43,25 @@ public class Main {
           desiredParalellism = Integer.parseInt(
               commandLine.getOptionValue(Cli.DESIRED_PARALLELISM));
         }
-
-        // Start the execution
         AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
+            Paths.get(commandLine.getOptionValue(Cli.SOURCE)),
             desiredParalellism);
 
-        Stream<Path> sourcePathStream = FolderUtils.getFiles(
-            commandLine.getOptionValue(Cli.SOURCE),
-            wildCard);
-
-        adlsUploader.upload(sourcePathStream);
+        // Clean up partially uploaded files
+        if (FolderUtils.cleanUpPartitiallyUploadedFiles(
+            commandLine.getOptionValue(Cli.SOURCE))) {
+          // Now re-fetch the files that qualify to be uploaded
+          List<Path> listOfPaths = FolderUtils.getFiles(
+              commandLine.getOptionValue(Cli.SOURCE),
+              wildCard);
+          // Start uploading
+          try {
+            adlsUploader.upload(listOfPaths);
+          } finally {
+            // Wait for 5 minutes (not worth a configuration parameter)
+            adlsUploader.terminate(300L);
+          }
+        }
 
         // Shutdown hook to handle graceful shutdown
         final Thread mainThread = Thread.currentThread();

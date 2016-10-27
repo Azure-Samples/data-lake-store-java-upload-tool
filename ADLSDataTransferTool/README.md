@@ -5,7 +5,8 @@ This tool uploads files from on-premises servers to Azure Data Lake.
 - JVM 1.8 or higher
 - Read and write privileges to mutate the files on the file system to maintain state
 - A valid Azure subscription
-- Valid Azure Data Lake Store deployment
+- Azure Data Lake Store account. Follow the instructions at [Get started with Azure Data Lake Store using the Azure Portal](https://azure.microsoft.com/en-us/documentation/articles/data-lake-store-get-started-portal/)
+- An Active Directory Application. Follow the instructions at [Create an Active Directory Application](https://azure.microsoft.com/en-us/documentation/articles/data-lake-store-authenticate-using-active-directory/#create-an-active-directory-application)
 
 #How to use
 
