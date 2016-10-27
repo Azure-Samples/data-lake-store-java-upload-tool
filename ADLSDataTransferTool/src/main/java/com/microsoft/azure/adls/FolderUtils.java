@@ -14,9 +14,9 @@ import java.util.stream.Stream;
  * @author Gandhinath Swaminathan
  */
 class FolderUtils {
+  static final String INPROGRESS_EXTENSION = ".inprogress";
+  static final String COMPLETED_EXTENSION = ".completed";
   private static final Logger logger = LoggerFactory.getLogger(FolderUtils.class.getName());
-  private static final String INPROGRESS_EXTENSION = ".inprogress";
-  private static final String COMPLETED_EXTENSION = ".completed";
 
   /**
    * Predicate that checks if path matches glob pattern.

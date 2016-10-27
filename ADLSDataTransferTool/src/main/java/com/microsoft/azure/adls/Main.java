@@ -5,6 +5,9 @@ import org.apache.commons.cli.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
+import java.util.stream.Stream;
+
 public class Main {
   private static final Logger logger = LoggerFactory.getLogger(Main.class.getName());
 
@@ -44,9 +47,11 @@ public class Main {
         AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
             desiredParalellism);
 
-        FolderUtils.getFiles(
+        Stream<Path> sourcePathStream = FolderUtils.getFiles(
             commandLine.getOptionValue(Cli.SOURCE),
             wildCard);
+
+        adlsUploader.upload(sourcePathStream);
 
         // Shutdown hook to handle graceful shutdown
         final Thread mainThread = Thread.currentThread();

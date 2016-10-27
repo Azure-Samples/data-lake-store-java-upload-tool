@@ -3,6 +3,9 @@ This tool uploads files from on-premises servers to Azure Data Lake.
 
 #Pre-requisites
 - JVM 1.8 or higher
+- Read and write privileges to mutate the files on the file system to maintain state
+- A valid Azure subscription
+- Valid Azure Data Lake Store deployment
 
 #How to use
 
