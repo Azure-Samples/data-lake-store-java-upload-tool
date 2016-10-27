@@ -35,68 +35,54 @@ class AzureDataLakeStoreUploader {
   }
 
   /**
-   * A completable future that moves the file to
-   * in progress status by renaming the file.
+   * Moves the file to in progress status by renaming the file.
    *
-   * @param path                Source path
-   * @param executorServicePool Pool used by the completable future
+   * @param path Source path
    * @return Target path
    */
-  private static CompletableFuture<Path> setStatusToInProgress(
-      Path path,
-      ExecutorService executorServicePool) {
-    return CompletableFuture.supplyAsync(() -> {
-      Path targetPath = Paths.get(
-          path
-              .toString()
-              .concat(FolderUtils.INPROGRESS_EXTENSION));
+  private Path setStatusToInProgress(Path path) {
+    Path targetPath = Paths.get(
+        path
+            .toString()
+            .concat(FolderUtils.INPROGRESS_EXTENSION));
 
-      FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-      return targetPath;
-    }, executorServicePool);
+    FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+    return targetPath;
   }
 
   /**
-   * A completable future that moves the file to
-   * completed status by renaming the file.
+   * Moves the file to completed status by renaming the file.
    *
-   * @param path                Source path
-   * @param executorServicePool Pool used by the completable future
+   * @param path Source path
    * @return Target path
    */
-  private static CompletableFuture<Path> setStatusToCompleted(
-      Path path,
-      ExecutorService executorServicePool) {
-    return CompletableFuture.supplyAsync(() -> {
-      String sourcePathString = path.toString();
-      String targetPathString = "";
-      if (sourcePathString.contains(FolderUtils.INPROGRESS_EXTENSION)) {
-        targetPathString = sourcePathString.replace(
-            FolderUtils.INPROGRESS_EXTENSION,
-            FolderUtils.COMPLETED_EXTENSION);
-      } else {
-        targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
-      }
-      Path targetPath = Paths.get(targetPathString);
-      FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-      return targetPath;
-    }, executorServicePool);
+  private Path setStatusToCompleted(Path path) {
+    String sourcePathString = path.toString();
+    String targetPathString;
+
+    // Handle in progress or fresh files
+    if (sourcePathString.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
+      targetPathString = sourcePathString.replace(
+          FolderUtils.INPROGRESS_EXTENSION,
+          FolderUtils.COMPLETED_EXTENSION);
+    } else {
+      targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
+    }
+
+    Path targetPath = Paths.get(targetPathString);
+    FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+    return targetPath;
   }
 
   /**
-   * A completable future that moves the local file to Azure Data Lake Store.
+   * Uploads the local file to Azure Data Lake Store.
    *
-   * @param path                Source path
-   * @param executorServicePool Pool used by the completable future
+   * @param path Source path
    * @return Source path
    */
-  private static CompletableFuture<Path> uploadToAzureDataLakeStore(
-      Path path,
-      ExecutorService executorServicePool) {
-    return CompletableFuture.supplyAsync(() -> {
-      logger.info("Uploading {} to Azure", path);
-      return path;
-    }, executorServicePool);
+  private Path uploadToAzureDataLakeStore(Path path) {
+    logger.info("Uploading {} to Azure", path);
+    return path;
   }
 
   /**
@@ -105,24 +91,14 @@ class AzureDataLakeStoreUploader {
    * @param inputPathStream Path stream of source file that qualify for upload
    */
   void upload(Stream<Path> inputPathStream) {
-    inputPathStream.map(
-        sourcePath -> setStatusToInProgress(sourcePath, this.executorServicePool)
-            .thenApply(pathToUpload -> uploadToAzureDataLakeStore(
-                pathToUpload,
-                this.executorServicePool))
-            .thenApply(inProgressPath -> setStatusToCompleted(
-                inProgressPath,
-                this.executorServicePool)));
-//    inputPathStream
-//        .map(sourcePath -> setStatusToInProgress(sourcePath, this.executorServicePool))
-//        .map(pathToUpload -> pathToUpload.thenApply(path ->
-//            uploadToAzureDataLakeStore(
-//                path,
-//                this.executorServicePool)))
-//        .map(inProgressPath -> inProgressPath.thenApply(path ->
-//            setStatusToCompleted(
-//                path,
-//                this.executorServicePool)));
+    Stream<CompletableFuture<Path>> completableFutureStream = inputPathStream.map(
+        sourcePath ->
+            CompletableFuture.supplyAsync(() ->
+                this.setStatusToInProgress(sourcePath), this.executorServicePool))
+        .map(pathToUpload -> pathToUpload.thenApply(
+            this::uploadToAzureDataLakeStore))
+        .map(inProgressPath -> inProgressPath.thenApply(
+            this::setStatusToCompleted));
   }
 
   /**
