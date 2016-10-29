@@ -67,34 +67,37 @@ class FolderUtils {
   }
 
   /**
-   * Check if the path is partially processed.
+   * Check if the path is partially staged.
    *
+   * @param extension Extension indicating the stage of partiality
    * @return Predicate that checks if path is partially processed
    */
-  private static Predicate<Path> isFilePartial() {
+  private static Predicate<Path> isFilePartiallyStaged(String extension) {
     return path ->
         Files.isRegularFile(path)
-            && path.toString().toLowerCase().endsWith(INPROGRESS_EXTENSION);
+            && path.toString().toLowerCase().endsWith(extension);
   }
 
   /**
-   * Cleans up partially uploaded files.
+   * Cleans up partially staged files.
    *
    * @param rootFolder Root of the source folder structure
+   * @param extension  Extension that needs to be cleaned up
    * @return True if the partially processed files are cleaned up
    */
-  static boolean cleanUpPartitiallyUploadedFiles(String rootFolder) {
-    boolean isPartitiallyUploadedFilesCleanedUp = false;
+  static boolean cleanUpPartitiallyStagedFiles(String rootFolder,
+                                               String extension) {
+    boolean isPartiallyStagedFilesCleanedup = false;
 
     if (Files.exists(Paths.get(rootFolder))) {
       // First, move all the partially uploaded files to original state
       try (Stream<Path> paths = Files.walk(Paths.get(rootFolder))) {
-        Stream<Path> ps = paths.filter(isFilePartial());
+        Stream<Path> ps = paths.filter(isFilePartiallyStaged(extension));
         ps.forEach(path -> {
           Path targetPath = Paths.get(
               path
                   .toString()
-                  .replace(INPROGRESS_EXTENSION, ""));
+                  .replace(extension, ""));
           logger.debug("Attempting to move partially processed file {} to {}",
               path.toString(),
               targetPath.toString());
@@ -102,7 +105,7 @@ class FolderUtils {
           move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
         });
         ps.close();
-        isPartitiallyUploadedFilesCleanedUp = true;
+        isPartiallyStagedFilesCleanedup = true;
       } catch (IOException ioe) {
         logger.error("Scanning the source folder {} failed with exception: {}",
             rootFolder,
@@ -112,7 +115,7 @@ class FolderUtils {
       logger.info("Root folder {} does not exist or is not accessible", rootFolder);
     }
 
-    return isPartitiallyUploadedFilesCleanedUp;
+    return isPartiallyStagedFilesCleanedup;
   }
 
   /**

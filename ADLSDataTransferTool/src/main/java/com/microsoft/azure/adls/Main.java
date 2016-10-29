@@ -45,11 +45,31 @@ public class Main {
         }
         AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
             Paths.get(commandLine.getOptionValue(Cli.SOURCE)),
+            commandLine.getOptionValue(Cli.CLIENT_ID),
+            commandLine.getOptionValue(Cli.AUTH_TOKEN_ENDPOINT),
+            commandLine.getOptionValue(Cli.CLIENT_KEY),
+            commandLine.getOptionValue(Cli.ACCOUNT_FQDN),
+            commandLine.getOptionValue(Cli.DESTINATION),
             desiredParalellism);
 
+        if (commandLine.hasOption(Cli.REPROCESS)) {
+          if (FolderUtils.cleanUpPartitiallyStagedFiles(
+              commandLine.getOptionValue(Cli.SOURCE),
+              FolderUtils.COMPLETED_EXTENSION)) {
+            logger.info(
+                "Reprocessing enabled. Re-staged completed files in folder{}",
+                commandLine.getOptionValue(Cli.SOURCE));
+          } else {
+            logger.info(
+                "Reprocessing enabled. Re-staged files in folder{} failed",
+                commandLine.getOptionValue(Cli.SOURCE));
+          }
+        }
+
         // Clean up partially uploaded files
-        if (FolderUtils.cleanUpPartitiallyUploadedFiles(
-            commandLine.getOptionValue(Cli.SOURCE))) {
+        if (FolderUtils.cleanUpPartitiallyStagedFiles(
+            commandLine.getOptionValue(Cli.SOURCE),
+            FolderUtils.INPROGRESS_EXTENSION)) {
           // Now re-fetch the files that qualify to be uploaded
           List<Path> listOfPaths = FolderUtils.getFiles(
               commandLine.getOptionValue(Cli.SOURCE),
@@ -69,7 +89,7 @@ public class Main {
           public void run() {
             try {
               logger.info("Shutdown detected. Trying to gracefully shutdown");
-              logger.info("Thanks for using the application {}", Cli.APPLICATION);
+              logger.info("Thank you for using the {} ", Cli.HEADER);
               // Wait for 5 minutes (not worth a configuration parameter)
               adlsUploader.terminate(300L);
               mainThread.join();

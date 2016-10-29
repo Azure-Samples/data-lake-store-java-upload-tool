@@ -12,11 +12,15 @@ import java.net.URISyntaxException;
  */
 public class Cli {
   static final String SOURCE = "s";
+  static final String CLIENT_ID = "c";
+  static final String AUTH_TOKEN_ENDPOINT = "t";
+  static final String CLIENT_KEY = "k";
+  static final String ACCOUNT_FQDN = "f";
   static final String DESTINATION = "d";
   static final String WILDCARD = "w";
   static final String REPROCESS = "r";
   static final String DESIRED_PARALLELISM = "p";
-  private static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
+  static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
   private static final String FOOTER = "Please report issues @ https://www.github.com/gandhinath/DataUploadTools";
   private static final String HELP = "h";
   private static final Logger logger = LoggerFactory.getLogger(Cli.class.getName());
@@ -95,6 +99,42 @@ public class Cli {
         .type(String.class)
         .build();
 
+    Option clientIdOption = Option.builder(CLIENT_ID)
+        .argName("clientId")
+        .hasArg()
+        .required(true)
+        .longOpt("clientId")
+        .desc("Client Id of the Azure active directory application")
+        .type(String.class)
+        .build();
+
+    Option authTokenEndpointOption = Option.builder(AUTH_TOKEN_ENDPOINT)
+        .argName("authTokenEndpoint")
+        .hasArg()
+        .required(true)
+        .longOpt("authTokenEndpoint")
+        .desc("Authentication Token Endpoint of the Azure active directory application")
+        .type(String.class)
+        .build();
+
+    Option clientKeyOption = Option.builder(CLIENT_KEY)
+        .argName("clientKey")
+        .hasArg()
+        .required(true)
+        .longOpt("clientKey")
+        .desc("Client key for the Azure active directory application")
+        .type(String.class)
+        .build();
+
+    Option accountFqdnOption = Option.builder(ACCOUNT_FQDN)
+        .argName("accountFQDN")
+        .hasArg()
+        .required(true)
+        .longOpt("accountFQDN")
+        .desc("Fully Qualified Domain Name of the Azure data lake account")
+        .type(String.class)
+        .build();
+
     Option destinationOption = Option.builder(DESTINATION)
         .argName("destination")
         .hasArg()
@@ -123,11 +163,16 @@ public class Cli {
         .type(int.class)
         .build();
 
-    options.addOption(sourceOption);
-    options.addOption(destinationOption);
-    options.addOption(wildcardOption);
-    options.addOption(reprocessOption);
-    options.addOption(desiredParallelism);
+    options
+        .addOption(sourceOption)
+        .addOption(clientIdOption)
+        .addOption(clientKeyOption)
+        .addOption(authTokenEndpointOption)
+        .addOption(accountFqdnOption)
+        .addOption(destinationOption)
+        .addOption(wildcardOption)
+        .addOption(reprocessOption)
+        .addOption(desiredParallelism);
 
     return options;
   }

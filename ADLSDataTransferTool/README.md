@@ -25,8 +25,19 @@ free to change to sun_checks or custom checks.
 ##Example command line
 
 ###Prints the help text
+```
 java \
     -jar target/ADLSDataTransferTool-0.1.jar
     -h
-
-###
+```
+###Uploads all csv files from local folder to Azure Data Lake
+````
+java \
+    -jar target/ADLSDataTransferTool-0.1.jar \
+    -p 4 \
+    -s /Users/gaswamin/data/ -d a -w "**/*.csv" \
+    -f gslakestore.azuredatalakestore.net \
+    -c 81748f9b-124c-416c-9008-c28408763b02 \
+    -k qEqVKaO7UOMYPi9AxVzIXHX26HjJlZveVQUotCoZhIo= \
+    -t https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token 
+```

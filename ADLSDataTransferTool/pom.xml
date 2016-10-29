@@ -122,7 +122,7 @@
                             <suppressionsLocation>
                                 ${checkstyle.suppressions.location}
                             </suppressionsLocation>
-                            <logViolationsToConsole>false</logViolationsToConsole>
+                            <logViolationsToConsole>true</logViolationsToConsole>
                             <consoleOutput>true</consoleOutput>
                             <violationSeverity>warn</violationSeverity>
                             <failOnViolation>false</failOnViolation>
