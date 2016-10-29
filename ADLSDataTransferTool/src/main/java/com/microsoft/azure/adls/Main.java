@@ -5,6 +5,7 @@ import org.apache.commons.cli.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
@@ -35,13 +36,13 @@ public class Main {
 
         // Prepare for execution
         String wildCard = "**/*";
-        int desiredParalellism = Runtime.getRuntime().availableProcessors();
+        int desiredParallelism = Runtime.getRuntime().availableProcessors();
         int desiredBufferSize = 256 * 1024 * 1024;  // 256 MB by default
         if (commandLine.hasOption(Cli.WILDCARD)) {
           wildCard = commandLine.getOptionValue(Cli.WILDCARD);
         }
         if (commandLine.hasOption(Cli.DESIRED_PARALLELISM)) {
-          desiredParalellism = Integer.parseInt(
+          desiredParallelism = Integer.parseInt(
               commandLine.getOptionValue(Cli.DESIRED_PARALLELISM));
         }
         if (commandLine.hasOption(Cli.DESIRED_BUFFER_SIZE)) {
@@ -49,17 +50,8 @@ public class Main {
               commandLine.getOptionValue(Cli.DESIRED_BUFFER_SIZE)) * 1024 * 1024;
         }
 
-        AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
-            Paths.get(commandLine.getOptionValue(Cli.SOURCE)),
-            commandLine.getOptionValue(Cli.CLIENT_ID),
-            commandLine.getOptionValue(Cli.AUTH_TOKEN_ENDPOINT),
-            commandLine.getOptionValue(Cli.CLIENT_KEY),
-            commandLine.getOptionValue(Cli.ACCOUNT_FQDN),
-            commandLine.getOptionValue(Cli.DESTINATION),
-            commandLine.getOptionValue(Cli.OCTAL_PERMISSIONS),
-            desiredParalellism,
-            desiredBufferSize);
-
+        // If re-processing is detected, re-set the status of the completed files
+        // so it can be picked up by the uploader.
         if (commandLine.hasOption(Cli.REPROCESS)) {
           if (FolderUtils.cleanUpPartitiallyStagedFiles(
               commandLine.getOptionValue(Cli.SOURCE),
@@ -83,32 +75,25 @@ public class Main {
               commandLine.getOptionValue(Cli.SOURCE),
               wildCard);
           // Start uploading
-          try {
+          try (AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
+              Paths.get(commandLine.getOptionValue(Cli.SOURCE)),
+              commandLine.getOptionValue(Cli.CLIENT_ID),
+              commandLine.getOptionValue(Cli.AUTH_TOKEN_ENDPOINT),
+              commandLine.getOptionValue(Cli.CLIENT_KEY),
+              commandLine.getOptionValue(Cli.ACCOUNT_FQDN),
+              commandLine.getOptionValue(Cli.DESTINATION),
+              commandLine.getOptionValue(Cli.OCTAL_PERMISSIONS),
+              desiredParallelism,
+              desiredBufferSize)) {
             adlsUploader.upload(listOfPaths);
-          } finally {
-            // Wait for 5 minutes (not worth a configuration parameter)
-            adlsUploader.terminate(300L);
+          } catch (IOException ex) {
+            logger.error("Instantiating AzureDataLakeStoreUploader and upload the list of files "
+                + "failed with exception {}", ex.getMessage());
+          } catch (Exception ex) {
+            logger.error("Instantiating AzureDataLakeStoreUploader and upload the list of files "
+                + "failed with an unknown exception {}", ex.getMessage());
           }
         }
-
-        // Shutdown hook to handle graceful shutdown
-        final Thread mainThread = Thread.currentThread();
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-          public void run() {
-            try {
-              logger.info("Shutdown detected. Trying to gracefully shutdown");
-              logger.info("Thank you for using the {} ", Cli.HEADER);
-              // Wait for 5 minutes (not worth a configuration parameter)
-              adlsUploader.terminate(300L);
-              mainThread.join();
-            } catch (InterruptedException e) {
-              logger.error("Cannot gracefully shutdown. "
-                  + "Shutdown failed with exception {}", e.getMessage());
-              logger.error("Exiting the system with exit code -1");
-              System.exit(-1);
-            }
-          }
-        });
       }
     } else {
       logger.error("Error in parsing the command line. Exiting the system with exit code -1");

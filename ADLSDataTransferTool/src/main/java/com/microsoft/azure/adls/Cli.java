@@ -219,7 +219,7 @@ public class Cli {
       CommandLine helpCommandLine = parser.parse(getHelpOptions(), args, true);
       if (helpCommandLine != null && helpCommandLine.hasOption(HELP)) {
         getHelp();
-        isParsingSuccessful = true;
+        isParsingSuccessful = false;
       } else {
         this.commandLine = parser.parse(getOptions(), args);
         isParsingSuccessful = true;

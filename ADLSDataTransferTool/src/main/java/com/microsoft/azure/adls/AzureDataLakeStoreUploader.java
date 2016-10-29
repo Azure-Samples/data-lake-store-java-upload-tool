@@ -1,7 +1,5 @@
 package com.microsoft.azure.adls;
 
-import static java.util.stream.Collectors.toList;
-
 import com.microsoft.azure.datalake.store.ADLException;
 import com.microsoft.azure.datalake.store.ADLStoreClient;
 import com.microsoft.azure.datalake.store.IfExists;
@@ -34,7 +32,7 @@ import java.util.stream.Collectors;
  *
  * @author Gandhinath Swaminathan
  */
-class AzureDataLakeStoreUploader {
+class AzureDataLakeStoreUploader implements AutoCloseable {
   private static final Logger logger = LoggerFactory.getLogger(
       AzureDataLakeStoreUploader.class.getName());
 
@@ -73,7 +71,7 @@ class AzureDataLakeStoreUploader {
                              String destinationRoot,
                              String octalPermissions,
                              int parallelism,
-                             int bufferSizeInBytes) {
+                             int bufferSizeInBytes) throws java.io.IOException {
     this.bufferSizeInBytes = bufferSizeInBytes;
     this.sourceRoot = sourceRoot;
     this.clientId = clientId;
@@ -91,7 +89,7 @@ class AzureDataLakeStoreUploader {
    *
    * @return Authorized client with access to the FQDN
    */
-  private ADLStoreClient getClient() {
+  private ADLStoreClient getClient() throws java.io.IOException {
     ADLStoreClient client = null;
     try {
       AzureADToken token = AzureADAuthenticator.getTokenUsingClientCreds(
@@ -101,17 +99,12 @@ class AzureDataLakeStoreUploader {
       client = ADLStoreClient.createClient(
           this.accountFqdn,
           token);
-    } catch (ADLException ex) {
+    } catch (java.io.IOException ex) {
       logger.error(
           "Acquiring Azure AD token and instantiating ADLS client failed with exception: {}",
           ex.getMessage());
-    } catch (Exception ex) {
-      logger.error(
-          "Acquiring Azure AD token and instantiating ADLS client "
-              + "failed with an unknown exception: {}",
-          ex.getMessage());
+      throw ex;
     }
-
     return client;
   }
 
@@ -224,7 +217,6 @@ class AzureDataLakeStoreUploader {
           destination,
           ex.getMessage());
     }
-
     return path;
   }
 
@@ -234,23 +226,17 @@ class AzureDataLakeStoreUploader {
    * @param inputPathList List of source file path that qualify for upload
    */
   void upload(List<Path> inputPathList) {
-    // ThenApply ensures that the code executes on the same
-    // thread as it's predecessor
-    List<CompletableFuture<Path>> completableFutureList = inputPathList.stream().map(
-        sourcePath ->
+    List<CompletableFuture<Path>> completableFutureList =
+        inputPathList.stream().map(path ->
             CompletableFuture.supplyAsync(() ->
-                this.setStatusToInProgress(sourcePath), this.executorServicePool)
+                this.setStatusToInProgress(path), this.executorServicePool)
                 .thenApply(this::uploadToAzureDataLakeStore)
                 .thenApply(this::setStatusToCompleted))
-        .collect(toList());
-
-    // Wait for all the futures to be complete
-    // and translate the result into an array
+            .collect(Collectors.toList());
     CompletableFuture<Void> allDoneFuture =
         CompletableFuture.allOf(
             completableFutureList.toArray(
                 new CompletableFuture[completableFutureList.size()]));
-
     allDoneFuture.thenApply(v ->
         completableFutureList.stream()
             .map(CompletableFuture::join)
@@ -263,8 +249,10 @@ class AzureDataLakeStoreUploader {
    * @param timeoutInSeconds Time to wait in seconds before forcefully
    *                         shutting down the executor service
    */
-  void terminate(long timeoutInSeconds) {
-    if (!executorServicePool.isShutdown() && !executorServicePool.isTerminated()) {
+  private void terminate(long timeoutInSeconds) {
+    if (this.client != null
+        && !executorServicePool.isShutdown()
+        && !executorServicePool.isTerminated()) {
       try {
         logger.debug("Attempting graceful shutdown of the executor service.", executorServicePool);
         executorServicePool.shutdown();
@@ -276,12 +264,26 @@ class AzureDataLakeStoreUploader {
       } finally {
         if (!executorServicePool.isTerminated()) {
           logger.debug("Forcing shutdown of the executor service.");
-          executorServicePool.shutdownNow();
+          List<Runnable> droppedTasks = executorServicePool.shutdownNow();
+          logger.debug("Executor was abruptly shut down. {} tasks will not be executed.",
+              droppedTasks.size());
         }
         logger.debug("Shutdown of the executor service completed.");
       }
     } else {
       logger.debug("Executor service has already shutdown.");
     }
+  }
+
+  /**
+   * Closes this resource, relinquishing any underlying resources.
+   * This method is invoked automatically on objects managed by the
+   * {@code try}-with-resources statement.
+   *
+   * @throws Exception if this resource cannot be closed
+   */
+  @Override
+  public void close() throws Exception {
+    this.terminate(300L);
   }
 }

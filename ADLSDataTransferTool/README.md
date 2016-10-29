@@ -21,13 +21,54 @@ navigate the reports. I am using google_styles for checkstyle validation. Please
 free to change to sun_checks or custom checks.
 
 ##Usage
-
+```
+usage: ADLSDataTransferTool-0.1.jar [-b <desiredBufferSize>] -c <clientId>
+       -d <destination> -f <accountFQDN> -k <clientKey> -o
+       <octalPermissions> [-p <desiredParallelism>] [-r] -s <source> -t
+       <authTokenEndpoint> [-w <wildcard>]
+Azure Data Lake Store Data Transfer Tool
+ -b,--desiredBufferSize <desiredBufferSize>     Desired buffer size in
+                                                megabytes. This will
+                                                impact your available
+                                                network bandwidth
+ -c,--clientId <clientId>                       Client Id of the Azure
+                                                active directory
+                                                application
+ -d,--destination <destination>                 Root of the ADLS folder
+                                                path into which the files
+                                                will be uploaded
+ -f,--accountFQDN <accountFQDN>                 Fully Qualified Domain
+                                                Name of the Azure data
+                                                lake account
+ -k,--clientKey <clientKey>                     Client key for the Azure
+                                                active directory
+                                                application
+ -o,--octalPermissions <octalPermissions>       permissions for the file,
+                                                as octal digits (For
+                                                Example, 755)
+ -p,--desiredParallelism <desiredParallelism>   Desired level of
+                                                parallelism. This will
+                                                impact your available
+                                                network bandwidth
+ -r,--reprocess                                 Indicates that you want to
+                                                reprocess the files
+ -s,--source <source>                           Root of the folder path
+                                                that contains the files to
+                                                upload
+ -t,--authTokenEndpoint <authTokenEndpoint>     Authentication Token
+                                                Endpoint of the Azure
+                                                active directory
+                                                application
+ -w,--wildcard <wildcard>                       Regular expression to
+                                                upload the files that
+                                                match a specific pattern
+```
 ##Example command line
 
 ###Prints the help text
 ```
 java \
-    -jar target/ADLSDataTransferTool-0.1.jar
+    -jar target/ADLSDataTransferTool-0.1.jar \
     -h
 ```
 ###Uploads all csv files from local folder to Azure Data Lake
