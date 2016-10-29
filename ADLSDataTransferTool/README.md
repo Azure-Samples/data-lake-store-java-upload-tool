@@ -35,6 +35,7 @@ java \
 java \
     -jar target/ADLSDataTransferTool-0.1.jar \
     -p 4 \
+    -b 4 \
     -s /Users/gaswamin/data/ -d a -w "**/*.csv" \
     -f gslakestore.azuredatalakestore.net \
     -c 81748f9b-124c-416c-9008-c28408763b02 \

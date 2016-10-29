@@ -20,6 +20,7 @@ public class Cli {
   static final String WILDCARD = "w";
   static final String REPROCESS = "r";
   static final String DESIRED_PARALLELISM = "p";
+  static final String DESIRED_BUFFER_SIZE = "b";
   static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
   private static final String FOOTER = "Please report issues @ https://www.github.com/gandhinath/DataUploadTools";
   private static final String HELP = "h";
@@ -153,12 +154,22 @@ public class Cli {
         .type(String.class)
         .build();
 
-    Option desiredParallelism = Option.builder(DESIRED_PARALLELISM)
+    Option desiredParallelismOption = Option.builder(DESIRED_PARALLELISM)
         .argName("desiredParallelism")
         .hasArg()
         .required(false)
         .longOpt("desiredParallelism")
         .desc("Desired level of parallelism. "
+            + "This will impact your available network bandwidth")
+        .type(int.class)
+        .build();
+
+    Option desiredBufferSizeOption = Option.builder(DESIRED_BUFFER_SIZE)
+        .argName("desiredBufferSize")
+        .hasArg()
+        .required(false)
+        .longOpt("desiredBufferSize")
+        .desc("Desired buffer size in megabytes. "
             + "This will impact your available network bandwidth")
         .type(int.class)
         .build();
@@ -172,7 +183,8 @@ public class Cli {
         .addOption(destinationOption)
         .addOption(wildcardOption)
         .addOption(reprocessOption)
-        .addOption(desiredParallelism);
+        .addOption(desiredParallelismOption)
+        .addOption(desiredBufferSizeOption);
 
     return options;
   }

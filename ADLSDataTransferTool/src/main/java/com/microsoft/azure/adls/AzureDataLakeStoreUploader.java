@@ -8,10 +8,12 @@ import com.microsoft.azure.datalake.store.oauth2.AzureADToken;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.*;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +35,7 @@ class AzureDataLakeStoreUploader {
       AzureDataLakeStoreUploader.class.getName());
 
   private final ExecutorService executorServicePool;
+  private final int bufferSizeInBytes;
   private final Path sourceRoot;
   private final String clientId;
   private final String authTokenEndpoint;
@@ -52,6 +55,7 @@ class AzureDataLakeStoreUploader {
    * @param accountFqdn       Fully Qualified Domain Name of the Azure data lake account.
    * @param destinationRoot   Root of the ADLS folder path into which the files will be uploaded
    * @param parallelism       Parallelism level
+   * @param bufferSizeInBytes Size of the buffer used during transfer
    */
   AzureDataLakeStoreUploader(Path sourceRoot,
                              String clientId,
@@ -59,7 +63,9 @@ class AzureDataLakeStoreUploader {
                              String clientKey,
                              String accountFqdn,
                              String destinationRoot,
-                             int parallelism) {
+                             int parallelism,
+                             int bufferSizeInBytes) {
+    this.bufferSizeInBytes = bufferSizeInBytes;
     this.sourceRoot = sourceRoot;
     this.clientId = clientId;
     this.authTokenEndpoint = authTokenEndpoint;
@@ -133,7 +139,8 @@ class AzureDataLakeStoreUploader {
           ex.getMessage());
     } catch (Exception ex) {
       logger.error(
-          "Acquiring Azure AD token and instantiating ADLS client failed with an unknown exception: {}",
+          "Acquiring Azure AD token and instantiating ADLS client "
+              + "failed with an unknown exception: {}",
           ex.getMessage());
     }
 
@@ -158,7 +165,8 @@ class AzureDataLakeStoreUploader {
           .replace(sourceRoot.toString(), "")
           .replace(path.getFileName().toString(), "");
       destination = destination
-          .concat(remainingPath);
+          .concat(remainingPath)
+          .concat(fileName);
 
       // Try uploading the file
       try {
@@ -166,11 +174,36 @@ class AzureDataLakeStoreUploader {
             path.toString(),
             destination);
 
+        // Create the output stream
         OutputStream stream = client.createFile(
-            filename,
+            destination,
             IfExists.OVERWRITE,
             "744",
             true);
+
+        try (SeekableByteChannel seekableByteChannel = Files.newByteChannel(
+            path,
+            EnumSet.of(StandardOpenOption.READ))) {
+          ByteBuffer buffer = ByteBuffer.allocate(this.bufferSizeInBytes);
+          buffer.clear();
+
+          while (seekableByteChannel.read(buffer) > 0) {
+            buffer.flip();
+            stream.write(buffer.array());
+            buffer.clear();
+          }
+        } catch (ADLException ex) {
+          logger.error("Writing to ADLS stream {} failed with exception: {}",
+              destination,
+              ex.getMessage());
+        } catch (IOException ex) {
+          logger.error("Reading from {} to write to ADLS stream {} failed with exception: {}",
+              path.toString(),
+              destination,
+              ex.getMessage());
+        } finally {
+          stream.close();
+        }
 
         logger.debug("Completing upload of {} to {}",
             path.toString(),

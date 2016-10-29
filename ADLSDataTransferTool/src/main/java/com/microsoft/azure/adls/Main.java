@@ -36,6 +36,7 @@ public class Main {
         // Prepare for execution
         String wildCard = "**/*";
         int desiredParalellism = Runtime.getRuntime().availableProcessors();
+        int desiredBufferSize = 256 * 1024 * 1024;  // 256 MB by default
         if (commandLine.hasOption(Cli.WILDCARD)) {
           wildCard = commandLine.getOptionValue(Cli.WILDCARD);
         }
@@ -43,6 +44,11 @@ public class Main {
           desiredParalellism = Integer.parseInt(
               commandLine.getOptionValue(Cli.DESIRED_PARALLELISM));
         }
+        if (commandLine.hasOption(Cli.DESIRED_BUFFER_SIZE)) {
+          desiredBufferSize = Integer.parseInt(
+              commandLine.getOptionValue(Cli.DESIRED_BUFFER_SIZE)) * 1024 * 1024;
+        }
+
         AzureDataLakeStoreUploader adlsUploader = new AzureDataLakeStoreUploader(
             Paths.get(commandLine.getOptionValue(Cli.SOURCE)),
             commandLine.getOptionValue(Cli.CLIENT_ID),
@@ -50,7 +56,8 @@ public class Main {
             commandLine.getOptionValue(Cli.CLIENT_KEY),
             commandLine.getOptionValue(Cli.ACCOUNT_FQDN),
             commandLine.getOptionValue(Cli.DESTINATION),
-            desiredParalellism);
+            desiredParalellism,
+            desiredBufferSize);
 
         if (commandLine.hasOption(Cli.REPROCESS)) {
           if (FolderUtils.cleanUpPartitiallyStagedFiles(
