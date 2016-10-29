@@ -23,6 +23,7 @@ public class Cli {
   static final String CLIENT_KEY = "k";
   static final String ACCOUNT_FQDN = "f";
   static final String DESTINATION = "d";
+  static final String OCTAL_PERMISSIONS = "o";
   static final String WILDCARD = "w";
   static final String REPROCESS = "r";
   static final String DESIRED_PARALLELISM = "p";
@@ -151,6 +152,15 @@ public class Cli {
         .type(String.class)
         .build();
 
+    Option octalPermissionsOption = Option.builder(OCTAL_PERMISSIONS)
+        .argName("octalPermissions")
+        .hasArg()
+        .required(true)
+        .longOpt("octalPermissions")
+        .desc("permissions for the file, as octal digits (For Example, 755)")
+        .type(String.class)
+        .build();
+
     Option wildcardOption = Option.builder(WILDCARD)
         .argName("wildcard")
         .hasArg()
@@ -187,6 +197,7 @@ public class Cli {
         .addOption(authTokenEndpointOption)
         .addOption(accountFqdnOption)
         .addOption(destinationOption)
+        .addOption(octalPermissionsOption)
         .addOption(wildcardOption)
         .addOption(reprocessOption)
         .addOption(desiredParallelismOption)

@@ -1,5 +1,7 @@
 package com.microsoft.azure.adls;
 
+import static java.util.stream.Collectors.toList;
+
 import com.microsoft.azure.datalake.store.ADLException;
 import com.microsoft.azure.datalake.store.ADLStoreClient;
 import com.microsoft.azure.datalake.store.IfExists;
@@ -25,8 +27,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static java.util.stream.Collectors.toList;
-
 /**
  * AzureDataLakeStoreUploader is responsible for uploading the stream of local files
  * to Azure Data Lake. This class uses executor service to manage
@@ -39,6 +39,8 @@ class AzureDataLakeStoreUploader {
       AzureDataLakeStoreUploader.class.getName());
 
   private final ExecutorService executorServicePool;
+  private ADLStoreClient client;
+
   private final int bufferSizeInBytes;
   private final Path sourceRoot;
   private final String clientId;
@@ -46,6 +48,7 @@ class AzureDataLakeStoreUploader {
   private final String clientKey;
   private final String accountFqdn;
   private final String destinationRoot;
+  private final String octalPermissions;
 
   /**
    * Constructor that initializes the executor services for the ADLS file uploader.
@@ -58,6 +61,7 @@ class AzureDataLakeStoreUploader {
    * @param clientKey         Client key for the Azure active directory application
    * @param accountFqdn       Fully Qualified Domain Name of the Azure data lake account.
    * @param destinationRoot   Root of the ADLS folder path into which the files will be uploaded
+   * @param octalPermissions  permissions for the file, as octal digits
    * @param parallelism       Parallelism level
    * @param bufferSizeInBytes Size of the buffer used during transfer
    */
@@ -67,6 +71,7 @@ class AzureDataLakeStoreUploader {
                              String clientKey,
                              String accountFqdn,
                              String destinationRoot,
+                             String octalPermissions,
                              int parallelism,
                              int bufferSizeInBytes) {
     this.bufferSizeInBytes = bufferSizeInBytes;
@@ -76,7 +81,38 @@ class AzureDataLakeStoreUploader {
     this.clientKey = clientKey;
     this.accountFqdn = accountFqdn;
     this.destinationRoot = destinationRoot;
+    this.octalPermissions = octalPermissions;
+    this.client = getClient();
     executorServicePool = Executors.newWorkStealingPool(parallelism);
+  }
+
+  /**
+   * Obtain OAuth2 token and use token to create client object.
+   *
+   * @return Authorized client with access to the FQDN
+   */
+  private ADLStoreClient getClient() {
+    ADLStoreClient client = null;
+    try {
+      AzureADToken token = AzureADAuthenticator.getTokenUsingClientCreds(
+          this.authTokenEndpoint,
+          this.clientId,
+          this.clientKey);
+      client = ADLStoreClient.createClient(
+          this.accountFqdn,
+          token);
+    } catch (ADLException ex) {
+      logger.error(
+          "Acquiring Azure AD token and instantiating ADLS client failed with exception: {}",
+          ex.getMessage());
+    } catch (Exception ex) {
+      logger.error(
+          "Acquiring Azure AD token and instantiating ADLS client "
+              + "failed with an unknown exception: {}",
+          ex.getMessage());
+    }
+
+    return client;
   }
 
   /**
@@ -126,107 +162,67 @@ class AzureDataLakeStoreUploader {
    * @return Source path
    */
   private Path uploadToAzureDataLakeStore(Path path) {
-    ADLStoreClient client = null;
+    assert (this.client != null);
 
-    // Obtain OAuth2 token and use token to create client object
-    try {
-      AzureADToken token = AzureADAuthenticator.getTokenUsingClientCreds(
-          this.authTokenEndpoint,
-          this.clientId,
-          this.clientKey);
-      client = ADLStoreClient.createClient(
-          this.accountFqdn,
-          token);
-    } catch (ADLException ex) {
-      logger.error(
-          "Acquiring Azure AD token and instantiating ADLS client failed with exception: {}",
-          ex.getMessage());
-    } catch (Exception ex) {
-      logger.error(
-          "Acquiring Azure AD token and instantiating ADLS client "
-              + "failed with an unknown exception: {}",
-          ex.getMessage());
+    String destinationFileName = path.getFileName().toString();
+    // Destination file should not have the in progress extension
+    if (destinationFileName.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
+      destinationFileName = destinationFileName.replace(FolderUtils.INPROGRESS_EXTENSION, "");
     }
 
-    if (client != null) {
-      String fileName = path.getFileName().toString();
-      // Destination file should not have the in progress extension
-      if (fileName.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
-        fileName = fileName.replace(FolderUtils.INPROGRESS_EXTENSION, "");
+    // Algorithm to figure out the destination path
+    // Takes the source root and remove that from the full path
+    // This gives us the file name and the path we have to actually create
+    // on the ADLS. Then concatenate the destination root with the remaining file
+    // path to create the destination folder.
+    String destination = destinationRoot;
+    if (destination.endsWith("/")) {
+      destination = destination.substring(0, destination.length() - 1);
+    }
+    String remainingPath = path
+        .toString()
+        .replace(this.sourceRoot.toString(), "")
+        .replace(path.getFileName().toString(), "");
+    destination = destination
+        .concat(remainingPath)
+        .concat(destinationFileName);
+
+    // Try uploading the file
+    logger.debug("Initiating upload of {} to {}", path.toString(), destination);
+    try (OutputStream stream = client.createFile(
+        destination,
+        IfExists.OVERWRITE,
+        this.octalPermissions,
+        true)) {
+      // Open a seekable channel into the source stream
+      // and write to ADLS stream in chunks
+      SeekableByteChannel seekableByteChannel = Files.newByteChannel(
+          path,
+          EnumSet.of(StandardOpenOption.READ));
+      ByteBuffer buffer = ByteBuffer.allocate(this.bufferSizeInBytes);
+      buffer.clear();
+      while (seekableByteChannel.read(buffer) > 0) {
+        buffer.flip();
+        stream.write(buffer.array(), buffer.arrayOffset(), buffer.limit());
+        buffer.clear();
       }
-
-      // Algorithm to figure out the destination path
-      // Takes the source root and remove that from the full path
-      // This gives us the file name and the path we have to actually create
-      // on the ADLS. Then concatenate the destination root with the remaining file
-      // path to create the destination folder.
-      String destination = destinationRoot;
-      if (destination.endsWith("/")) {
-        destination = destination.substring(0, destination.length() - 1);
-      }
-      String remainingPath = path
-          .toString()
-          .replace(sourceRoot.toString(), "")
-          .replace(path.getFileName().toString(), "");
-      destination = destination
-          .concat(remainingPath)
-          .concat(fileName);
-
-      // Try uploading the file
-      try {
-        logger.debug("Initiating upload of {} to {}",
-            path.toString(),
-            destination);
-
-        // Create the output stream
-        OutputStream stream = client.createFile(
-            destination,
-            IfExists.OVERWRITE,
-            "744",
-            true);
-
-        try (SeekableByteChannel seekableByteChannel = Files.newByteChannel(
-            path,
-            EnumSet.of(StandardOpenOption.READ))) {
-          ByteBuffer buffer = ByteBuffer.allocate(this.bufferSizeInBytes);
-          buffer.clear();
-
-          while (seekableByteChannel.read(buffer) > 0) {
-            buffer.flip();
-            stream.write(buffer.array());
-            buffer.clear();
-          }
-        } catch (ADLException ex) {
-          logger.error("Writing to ADLS stream {} failed with exception: {}",
-              destination,
-              ex.getMessage());
-        } catch (IOException ex) {
-          logger.error("Reading from {} to write to ADLS stream {} failed with exception: {}",
-              path.toString(),
-              destination,
-              ex.getMessage());
-        } finally {
-          stream.close();
-        }
-
-        logger.debug("Completing upload of {} to {}",
-            path.toString(),
-            destination);
-      } catch (ADLException ex) {
-        logger.error(
-            "Uploading {} to {} failed with exception: {}",
-            sourceRoot,
-            destination,
-            ex.getMessage());
-      } catch (Exception ex) {
-        logger.error(
-            "Uploading {} to {} failed with an unknown exception: {}",
-            sourceRoot,
-            destination,
-            ex.getMessage());
-      }
-    } else {
-      logger.warn("ADLS client is not initialized. Ignoring {}", path.toString());
+      logger.debug("Completing upload of {} to {}", path.toString(), destination);
+    } catch (ADLException ex) {
+      logger.error(
+          "Writing to ADLS stream {} failed with ADLS exception: {}",
+          destination,
+          ex.getMessage());
+    } catch (IOException ex) {
+      logger.error("Reading from {} to write to ADLS stream {} failed with IO exception: {}",
+          path.toString(),
+          destination,
+          ex.getMessage());
+    } catch (Exception ex) {
+      logger.error("Reading from {} to write to ADLS stream {} "
+              + "failed with an unknown exception: {}",
+          path.toString(),
+          destination,
+          ex.getMessage());
     }
 
     return path;

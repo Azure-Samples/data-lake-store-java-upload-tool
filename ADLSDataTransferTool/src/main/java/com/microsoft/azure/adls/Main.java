@@ -56,6 +56,7 @@ public class Main {
             commandLine.getOptionValue(Cli.CLIENT_KEY),
             commandLine.getOptionValue(Cli.ACCOUNT_FQDN),
             commandLine.getOptionValue(Cli.DESTINATION),
+            commandLine.getOptionValue(Cli.OCTAL_PERMISSIONS),
             desiredParalellism,
             desiredBufferSize);
 

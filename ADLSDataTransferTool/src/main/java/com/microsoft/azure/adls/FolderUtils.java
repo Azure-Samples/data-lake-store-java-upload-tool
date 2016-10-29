@@ -103,7 +103,7 @@ class FolderUtils {
               path
                   .toString()
                   .replace(extension, ""));
-          logger.debug("Attempting to move partially processed file {} to {}",
+          logger.debug("Attempting to move partially staged file {} to {}",
               path.toString(),
               targetPath.toString());
 

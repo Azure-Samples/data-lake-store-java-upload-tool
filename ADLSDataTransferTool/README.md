@@ -16,8 +16,8 @@ I am using maven shade plugin to build fat jar
 
 For developers, please run
 `mvn clean compile site`
-After you run the command, please navigate to target/site/project-summary.html and 
-navigate the reports. I am using google_styles for checkstyle validation. Please feel 
+After you run the command, please navigate to target/site/project-summary.html and
+navigate the reports. I am using google_styles for checkstyle validation. Please feel
 free to change to sun_checks or custom checks.
 
 ##Usage
@@ -31,14 +31,33 @@ java \
     -h
 ```
 ###Uploads all csv files from local folder to Azure Data Lake
-````
+```
 java \
     -jar target/ADLSDataTransferTool-0.1.jar \
     -p 4 \
     -b 4 \
-    -s /Users/gaswamin/data/ -d a -w "**/*.csv" \
+    -s /Users/gandhi/code/java/data/ \
+    -d /dev/data/ \
+    -o 740 \
+    -w "**/*.csv" \
     -f gslakestore.azuredatalakestore.net \
     -c 81748f9b-124c-416c-9008-c28408763b02 \
     -k qEqVKaO7UOMYPi9AxVzIXHX26HjJlZveVQUotCoZhIo= \
-    -t https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token 
+    -t https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token
+```
+###Re-processes all the files from local folder and uploads to Azure Data Lake
+```
+java \
+    -jar target/ADLSDataTransferTool-0.1.jar \
+    -r \
+    -p 4 \
+    -b 4 \
+    -s /Users/gandhi/code/java/data/ \
+    -d /dev/data/ \
+    -o 740 \
+    -w "**/*.csv" \
+    -f gslakestore.azuredatalakestore.net \
+    -c 81748f9b-124c-416c-9008-c28408763b02 \
+    -k qEqVKaO7UOMYPi9AxVzIXHX26HjJlZveVQUotCoZhIo= \
+    -t https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token
 ```
