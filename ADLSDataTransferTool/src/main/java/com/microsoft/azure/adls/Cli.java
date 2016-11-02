@@ -28,7 +28,8 @@ public class Cli {
   static final String REPROCESS = "r";
   static final String DESIRED_PARALLELISM = "p";
   static final String DESIRED_BUFFER_SIZE = "b";
-  static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
+  static final String LOG_FILE_PATH = "l";
+  private static final String HEADER = "Azure Data Lake Store Data Transfer Tool";
   private static final String FOOTER = "Please report issues @ https://www.github.com/gandhinath/DataUploadTools";
   private static final String HELP = "h";
   private static final Logger logger = LoggerFactory.getLogger(Cli.class.getName());
@@ -190,6 +191,15 @@ public class Cli {
         .type(int.class)
         .build();
 
+    Option logFilePath = Option.builder(LOG_FILE_PATH)
+        .argName("logFilePath")
+        .hasArg()
+        .required(false)
+        .longOpt("logFilePath")
+        .desc("Log file path")
+        .type(String.class)
+        .build();
+
     options
         .addOption(sourceOption)
         .addOption(clientIdOption)
@@ -201,7 +211,8 @@ public class Cli {
         .addOption(wildcardOption)
         .addOption(reprocessOption)
         .addOption(desiredParallelismOption)
-        .addOption(desiredBufferSizeOption);
+        .addOption(desiredBufferSizeOption)
+        .addOption(logFilePath);
 
     return options;
   }

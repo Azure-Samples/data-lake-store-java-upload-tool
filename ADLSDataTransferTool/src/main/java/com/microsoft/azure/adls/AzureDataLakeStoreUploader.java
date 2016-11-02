@@ -90,7 +90,7 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    * @return Authorized client with access to the FQDN
    */
   private ADLStoreClient getClient() throws java.io.IOException {
-    ADLStoreClient client = null;
+    ADLStoreClient client;
     try {
       AzureADToken token = AzureADAuthenticator.getTokenUsingClientCreds(
           this.authTokenEndpoint,
@@ -111,113 +111,142 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
   /**
    * Moves the file to in progress status by renaming the file.
    *
-   * @param path Source path
+   * @param path                Source path
+   * @param executorServicePool Executor Service
    * @return Target path
    */
-  private Path setStatusToInProgress(Path path) {
-    Path targetPath = Paths.get(
-        path
-            .toString()
-            .concat(FolderUtils.INPROGRESS_EXTENSION));
+  private CompletableFuture<Path> setStatusToInProgress(
+      Path path,
+      ExecutorService executorServicePool) {
+    CompletableFuture<Path> completableFuture = new CompletableFuture<>();
+    CompletableFuture.runAsync(() -> {
+      Path targetPath = Paths.get(
+          path
+              .toString()
+              .concat(FolderUtils.INPROGRESS_EXTENSION));
 
-    FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-    return targetPath;
+      FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+      completableFuture.complete(targetPath);
+    }, executorServicePool);
+    return completableFuture;
   }
 
   /**
    * Moves the file to completed status by renaming the file.
    *
-   * @param path Source path
+   * @param path                Source path
+   * @param executorServicePool Executor Service
    * @return Target path
    */
-  private Path setStatusToCompleted(Path path) {
-    String sourcePathString = path.toString();
-    String targetPathString;
+  private CompletableFuture<Path> setStatusToCompleted(
+      Path path,
+      ExecutorService executorServicePool) {
+    CompletableFuture<Path> completableFuture = new CompletableFuture<>();
+    CompletableFuture.runAsync(() -> {
+      String sourcePathString = path.toString();
+      String targetPathString;
 
-    // Handle in progress or fresh files
-    if (sourcePathString.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
-      targetPathString = sourcePathString.replace(
-          FolderUtils.INPROGRESS_EXTENSION,
-          FolderUtils.COMPLETED_EXTENSION);
-    } else {
-      targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
-    }
+      // Handle in progress or fresh files
+      if (sourcePathString.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
+        targetPathString = sourcePathString.replace(
+            FolderUtils.INPROGRESS_EXTENSION,
+            FolderUtils.COMPLETED_EXTENSION);
+      } else {
+        targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
+      }
 
-    Path targetPath = Paths.get(targetPathString);
-    FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-    return targetPath;
+      Path targetPath = Paths.get(targetPathString);
+      FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+      completableFuture.complete(targetPath);
+    }, executorServicePool);
+    return completableFuture;
   }
 
   /**
    * Uploads the local file to Azure Data Lake Store.
    *
-   * @param path Source path
+   * @param path                Source path
+   * @param executorServicePool Executor Service
    * @return Source path
    */
-  private Path uploadToAzureDataLakeStore(Path path) {
+  private CompletableFuture<Path> uploadToAzureDataLakeStore(
+      Path path,
+      ExecutorService executorServicePool) {
     assert (this.client != null);
-
-    String destinationFileName = path.getFileName().toString();
-    // Destination file should not have the in progress extension
-    if (destinationFileName.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
-      destinationFileName = destinationFileName.replace(FolderUtils.INPROGRESS_EXTENSION, "");
-    }
-
-    // Algorithm to figure out the destination path
-    // Takes the source root and remove that from the full path
-    // This gives us the file name and the path we have to actually create
-    // on the ADLS. Then concatenate the destination root with the remaining file
-    // path to create the destination folder.
-    String destination = destinationRoot;
-    if (destination.endsWith("/")) {
-      destination = destination.substring(0, destination.length() - 1);
-    }
-    String remainingPath = path
-        .toString()
-        .replace(this.sourceRoot.toString(), "")
-        .replace(path.getFileName().toString(), "");
-    destination = destination
-        .concat(remainingPath)
-        .concat(destinationFileName);
-
-    // Try uploading the file
-    logger.debug("Initiating upload of {} to {}", path.toString(), destination);
-    try (OutputStream stream = client.createFile(
-        destination,
-        IfExists.OVERWRITE,
-        this.octalPermissions,
-        true)) {
-      // Open a seekable channel into the source stream
-      // and write to ADLS stream in chunks
-      SeekableByteChannel seekableByteChannel = Files.newByteChannel(
-          path,
-          EnumSet.of(StandardOpenOption.READ));
-      ByteBuffer buffer = ByteBuffer.allocate(this.bufferSizeInBytes);
-      buffer.clear();
-      while (seekableByteChannel.read(buffer) > 0) {
-        buffer.flip();
-        stream.write(buffer.array(), buffer.arrayOffset(), buffer.limit());
-        buffer.clear();
+    CompletableFuture<Path> completableFuture = new CompletableFuture<>();
+    CompletableFuture.runAsync(() -> {
+      String destinationFileName = path.getFileName().toString();
+      // Destination file should not have the in progress extension
+      if (destinationFileName.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
+        destinationFileName = destinationFileName.replace(FolderUtils.INPROGRESS_EXTENSION, "");
       }
-      logger.debug("Completing upload of {} to {}", path.toString(), destination);
-    } catch (ADLException ex) {
-      logger.error(
-          "Writing to ADLS stream {} failed with ADLS exception: {}",
+
+      // Algorithm to figure out the destination path
+      // Takes the source root and remove that from the full path
+      // This gives us the file name and the path we have to actually create
+      // on the ADLS. Then concatenate the destination root with the remaining file
+      // path to create the destination folder.
+      String destination = destinationRoot;
+      if (destination.endsWith("/")) {
+        destination = destination.substring(0, destination.length() - 1);
+      }
+      String remainingPath = path
+          .toString()
+          .replace(this.sourceRoot.toString(), "")
+          .replace(path.getFileName().toString(), "");
+      destination = destination
+          .concat(remainingPath)
+          .concat(destinationFileName);
+
+      // Try uploading the file
+      logger.debug("Initiating upload of {} to {}", path.toString(), destination);
+      try (OutputStream stream = client.createFile(
           destination,
-          ex.getMessage());
-    } catch (IOException ex) {
-      logger.error("Reading from {} to write to ADLS stream {} failed with IO exception: {}",
-          path.toString(),
-          destination,
-          ex.getMessage());
-    } catch (Exception ex) {
-      logger.error("Reading from {} to write to ADLS stream {} "
-              + "failed with an unknown exception: {}",
-          path.toString(),
-          destination,
-          ex.getMessage());
-    }
-    return path;
+          IfExists.OVERWRITE,
+          this.octalPermissions,
+          true)) {
+        // Open a seekable channel into the source stream
+        // and write to ADLS stream in chunks
+        long fileSize = Files.size(path);
+        long uploaded = 0L;
+        try (SeekableByteChannel seekableByteChannel = Files.newByteChannel(
+            path,
+            EnumSet.of(StandardOpenOption.READ))) {
+          ByteBuffer buffer = ByteBuffer.allocate(this.bufferSizeInBytes);
+          buffer.clear();
+          while (seekableByteChannel.read(buffer) > 0) {
+            buffer.flip();
+            stream.write(buffer.array(), buffer.arrayOffset(), buffer.limit());
+            uploaded += buffer.limit();
+            buffer.clear();
+            logger.debug("Uploaded {} bytes of {} bytes. {}% completed.",
+                uploaded,
+                fileSize,
+                uploaded > 0 ? (uploaded * 100.0f) / fileSize : 0.0f);
+          }
+          logger.info("Completing upload of {} to {}", path.toString(), destination);
+          completableFuture.complete(path);
+        } catch (IOException ex) {
+          logger.error("Reading from {} to write to ADLS stream {} failed with IO exception: {}",
+              path.toString(),
+              destination,
+              ex.getMessage());
+          completableFuture.completeExceptionally(ex);
+        }
+      } catch (ADLException ex) {
+        logger.error(
+            "Writing to ADLS stream {} failed with ADLS exception: {}",
+            destination,
+            ex.getMessage());
+        completableFuture.completeExceptionally(ex);
+      } catch (IOException ex) {
+        logger.error("Creating ADLS stream {} failed with IO exception: {}",
+            destination,
+            ex.getMessage());
+        completableFuture.completeExceptionally(ex);
+      }
+    }, executorServicePool);
+    return completableFuture;
   }
 
   /**
@@ -226,19 +255,30 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    * @param inputPathList List of source file path that qualify for upload
    */
   void upload(List<Path> inputPathList) {
-    List<CompletableFuture<Path>> completableFutureList =
-        inputPathList.stream().map(path ->
-            CompletableFuture.supplyAsync(() ->
-                this.setStatusToInProgress(path), this.executorServicePool)
-                .thenApply(this::uploadToAzureDataLakeStore)
-                .thenApply(this::setStatusToCompleted))
-            .collect(Collectors.toList());
-    CompletableFuture<Void> allDoneFuture =
-        CompletableFuture.allOf(
-            completableFutureList.toArray(
-                new CompletableFuture[completableFutureList.size()]));
-    allDoneFuture.thenApply(v ->
-        completableFutureList.stream()
+    // Workflow
+    List<CompletableFuture<CompletableFuture<Path>>> completableFutureStream =
+        inputPathList.stream()
+            .map(path -> this.setStatusToInProgress(path, this.executorServicePool))
+            .map(future -> future.thenApply(path ->
+                this.uploadToAzureDataLakeStore(path, this.executorServicePool)))
+            .map(future -> future.whenComplete((completableFuturePath, ex) -> {
+              if (completableFuturePath != null) {
+                completableFuturePath.thenAccept(path ->
+                    this.setStatusToCompleted(path, this.executorServicePool));
+              } else {
+                logger.error("Uploading failed with exception: {}."
+                        + "Leaving the file in progress for debugging purposes",
+                    ex.getMessage());
+              }
+            })).collect(Collectors.toList());
+
+    // Wait for things to finish
+    CompletableFuture<Void> voidCompletableFuture = CompletableFuture.allOf(
+        completableFutureStream.toArray(
+            new CompletableFuture[completableFutureStream.size()]));
+
+    voidCompletableFuture.thenApply(v ->
+        completableFutureStream.stream()
             .map(CompletableFuture::join)
             .collect(Collectors.toList()));
   }

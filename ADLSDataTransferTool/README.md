@@ -22,9 +22,9 @@ free to change to sun_checks or custom checks.
 
 ##Usage
 ```
-usage: ADLSDataTransferTool-0.1.jar [-b <desiredBufferSize>] -c <clientId>
-       -d <destination> -f <accountFQDN> -k <clientKey> -o
-       <octalPermissions> [-p <desiredParallelism>] [-r] -s <source> -t
+usage: ADLSDataTransferTool-0.2.jar [-b <desiredBufferSize>] -c <clientId>
+       -d <destination> -f <accountFQDN> -k <clientKey> [-l <logFilePath>]
+       -o <octalPermissions> [-p <desiredParallelism>] [-r] -s <source> -t
        <authTokenEndpoint> [-w <wildcard>]
 Azure Data Lake Store Data Transfer Tool
  -b,--desiredBufferSize <desiredBufferSize>     Desired buffer size in
@@ -43,6 +43,7 @@ Azure Data Lake Store Data Transfer Tool
  -k,--clientKey <clientKey>                     Client key for the Azure
                                                 active directory
                                                 application
+ -l,--logFilePath <logFilePath>                 Log file path
  -o,--octalPermissions <octalPermissions>       permissions for the file,
                                                 as octal digits (For
                                                 Example, 755)
@@ -63,7 +64,7 @@ Azure Data Lake Store Data Transfer Tool
                                                 upload the files that
                                                 match a specific pattern
 ```
-##Example command line
+##Example command lines
 
 ###Prints the help text
 ```
@@ -90,6 +91,23 @@ java \
 ```
 java \
     -jar target/ADLSDataTransferTool-0.1.jar \
+    -r \
+    -p 4 \
+    -b 4 \
+    -s /Users/gandhi/code/java/data/ \
+    -d /dev/data/ \
+    -o 740 \
+    -w "**/*.csv" \
+    -f gslakestore.azuredatalakestore.net \
+    -c 81748f9b-124c-416c-9008-c28408763b02 \
+    -k qEqVKaO7UOMYPi9AxVzIXHX26HjJlZveVQUotCoZhIo= \
+    -t https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token
+```
+###Re-processes all the files from local folder and uploads to Azure Data Lake with a specific log folder location
+```
+java \
+    -jar target/ADLSDataTransferTool-0.1.jar \
+    -l /usr/log/ADLSUploader
     -r \
     -p 4 \
     -b 4 \

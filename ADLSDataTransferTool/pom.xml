@@ -6,7 +6,7 @@
 
     <groupId>com.microsoft.azure.adls</groupId>
     <artifactId>ADLSDataTransferTool</artifactId>
-    <version>0.1</version>
+    <version>0.2</version>
     <packaging>jar</packaging>
     <description>
         This tool uploads files from on-premises servers to Azure Data Lake.
