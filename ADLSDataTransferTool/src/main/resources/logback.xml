@@ -13,7 +13,7 @@
 
     <!-- Rolling File Appender -->
     <appender name="TIME_BASED_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/srv/logs/application.log</file>
+        <file>${log_path}/${log_file}.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <!-- daily rollover. Make sure the path matches the one in the file element or else
              the rollover logs are placed in the working directory. -->

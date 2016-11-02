@@ -69,13 +69,13 @@ Azure Data Lake Store Data Transfer Tool
 ###Prints the help text
 ```
 java \
-    -jar target/ADLSDataTransferTool-0.1.jar \
+    -jar target/ADLSDataTransferTool-0.2.jar \
     -h
 ```
 ###Uploads all csv files from local folder to Azure Data Lake
 ```
 java \
-    -jar target/ADLSDataTransferTool-0.1.jar \
+    -jar target/ADLSDataTransferTool-0.2.jar \
     -p 4 \
     -b 4 \
     -s /Users/gandhi/code/java/data/ \
@@ -90,7 +90,7 @@ java \
 ###Re-processes all the files from local folder and uploads to Azure Data Lake
 ```
 java \
-    -jar target/ADLSDataTransferTool-0.1.jar \
+    -jar target/ADLSDataTransferTool-0.2.jar \
     -r \
     -p 4 \
     -b 4 \
@@ -106,7 +106,7 @@ java \
 ###Re-processes all the files from local folder and uploads to Azure Data Lake with a specific log folder location
 ```
 java \
-    -jar target/ADLSDataTransferTool-0.1.jar \
+    -jar target/ADLSDataTransferTool-0.2.jar \
     -l /usr/log/ADLSUploader
     -r \
     -p 4 \
