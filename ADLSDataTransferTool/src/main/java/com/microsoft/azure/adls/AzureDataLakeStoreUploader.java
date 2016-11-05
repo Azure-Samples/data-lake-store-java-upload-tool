@@ -5,7 +5,6 @@ import com.microsoft.azure.datalake.store.ADLStoreClient;
 import com.microsoft.azure.datalake.store.IfExists;
 import com.microsoft.azure.datalake.store.oauth2.AzureADAuthenticator;
 import com.microsoft.azure.datalake.store.oauth2.AzureADToken;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +17,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -116,7 +114,6 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param path                Source path
    * @param executorServicePool Executor Service
-   *
    * @return Target path
    */
   private CompletableFuture<Path> setStatusToInProgress(
@@ -139,7 +136,6 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    * Moves the file to completed status by renaming the file.
    *
    * @param path Source path
-   *
    * @return Target path
    */
   private Path setStatusToCompleted(
@@ -166,7 +162,6 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param path                Source path
    * @param executorServicePool Executor Service
-   *
    * @return Source path
    */
   private CompletableFuture<Path> uploadToAzureDataLakeStore(
@@ -275,7 +270,7 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
               path.toString());
         });
       }
-    });
+    }).join();
   }
 
   /**
@@ -285,16 +280,13 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param futures A List of completable futures
    * @param <T>     Type of the completable future
-   *
    * @return A promise that manages all the completable futures passed in as parameter along with
-   *          the result
+   * the result
    */
   private static <T> CompletableFuture<List<T>> cancellingAllOf(
       List<CompletableFuture<T>> futures) {
     final AtomicBoolean completedSuccessfully = new AtomicBoolean(true);
     final CompletableFuture<List<T>> promise = new CompletableFuture<>();
-    final RuntimeException runtimeException = new RuntimeException();
-    List<T> successfulCompletions = new ArrayList<>();
 
     for (CompletableFuture<T> future : futures) {
       if (completedSuccessfully.get()) {
@@ -307,19 +299,21 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
                   .filter(f -> f != future)
                   .forEach(f -> f.cancel(true));
             }
-            runtimeException.addSuppressed(ex);
-          } else {
-            successfulCompletions.add(result);
+            promise.completeExceptionally(ex);
           }
         });
       }
     }
 
-    // Setup the promise with the appropriate return value
+    // Wait for things to wrap up
+    // and collect the results
+    List<T> successfulCompletions = futures.stream()
+        .map(CompletableFuture::join)
+        .collect(Collectors.toList());
+
+    // Complete and return
     if (completedSuccessfully.get()) {
       promise.complete(successfulCompletions);
-    } else {
-      promise.completeExceptionally(runtimeException);
     }
     return promise;
   }
