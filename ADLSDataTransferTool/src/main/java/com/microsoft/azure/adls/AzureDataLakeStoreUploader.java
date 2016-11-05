@@ -5,6 +5,7 @@ import com.microsoft.azure.datalake.store.ADLStoreClient;
 import com.microsoft.azure.datalake.store.IfExists;
 import com.microsoft.azure.datalake.store.oauth2.AzureADAuthenticator;
 import com.microsoft.azure.datalake.store.oauth2.AzureADToken;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,13 +18,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -52,11 +54,11 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
   /**
    * Constructor that initializes the executor services for the ADLS file uploader.
    *
-   * @param sourceRoot        Root path of the source folder. Used to compute the path
-   *                          in Azure Data Lake Storage
+   * @param sourceRoot        Root path of the source folder. Used to compute the path in Azure Data
+   *                          Lake Storage
    * @param clientId          Client Id of the Azure active directory application
-   * @param authTokenEndpoint Authentication Token Endpoint of the Azure active
-   *                          directory application
+   * @param authTokenEndpoint Authentication Token Endpoint of the Azure active directory
+   *                          application
    * @param clientKey         Client key for the Azure active directory application
    * @param accountFqdn       Fully Qualified Domain Name of the Azure data lake account.
    * @param destinationRoot   Root of the ADLS folder path into which the files will be uploaded
@@ -135,32 +137,26 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
   /**
    * Moves the file to completed status by renaming the file.
    *
-   * @param path                Source path
-   * @param executorServicePool Executor Service
+   * @param path Source path
    * @return Target path
    */
-  private CompletableFuture<Path> setStatusToCompleted(
-      Path path,
-      ExecutorService executorServicePool) {
-    CompletableFuture<Path> completableFuture = new CompletableFuture<>();
-    CompletableFuture.runAsync(() -> {
-      String sourcePathString = path.toString();
-      String targetPathString;
+  private Path setStatusToCompleted(
+      Path path) {
+    String sourcePathString = path.toString();
+    String targetPathString;
 
-      // Handle in progress or fresh files
-      if (sourcePathString.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
-        targetPathString = sourcePathString.replace(
-            FolderUtils.INPROGRESS_EXTENSION,
-            FolderUtils.COMPLETED_EXTENSION);
-      } else {
-        targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
-      }
+    // Handle in progress or fresh files
+    if (sourcePathString.endsWith(FolderUtils.INPROGRESS_EXTENSION)) {
+      targetPathString = sourcePathString.replace(
+          FolderUtils.INPROGRESS_EXTENSION,
+          FolderUtils.COMPLETED_EXTENSION);
+    } else {
+      targetPathString = sourcePathString.concat(FolderUtils.COMPLETED_EXTENSION);
+    }
 
-      Path targetPath = Paths.get(targetPathString);
-      FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
-      completableFuture.complete(targetPath);
-    }, executorServicePool);
-    return completableFuture;
+    Path targetPath = Paths.get(targetPathString);
+    FolderUtils.move(path, targetPath, StandardCopyOption.REPLACE_EXISTING);
+    return targetPath;
   }
 
   /**
@@ -262,41 +258,72 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
             .map(path -> this.setStatusToInProgress(path, this.executorServicePool))
             .map(future -> future.thenCompose(path ->
                 this.uploadToAzureDataLakeStore(path, this.executorServicePool)))
-            .map(future -> future.whenComplete((path, ex) -> {
-              if (ex != null) {
-                this.setStatusToCompleted(path, this.executorServicePool);
-              }
-            }))
             .collect(Collectors.toList());
 
-    CompletableFuture<List<Path>> result = CompletableFuture.allOf(completableFutureList.toArray(
-        new CompletableFuture[completableFutureList.size()]))
-        .thenApply(v -> completableFutureList.stream()
-            .map(CompletableFuture::join)
-            .collect(Collectors.toList()));
-
-    completableFutureList.forEach(f -> f.whenComplete((pathList, ex) -> {
+    // Manage execution and wait for results
+    cancellingAllOf(completableFutureList).whenComplete((paths, ex) -> {
       if (ex != null) {
-        result.completeExceptionally(ex);
-      }
-    }));
-
-    if (!result.isCompletedExceptionally()) {
-      try {
-        result.get().forEach(path -> {
-          logger.debug("{} uploaded successfully.", path);
+        logger.error("Uploading to Azure Data Lake failed with exception {}."
+            + " Cancelling all the other executing threads", ex);
+      } else {
+        paths.forEach(path -> {
+          this.setStatusToCompleted(path);
+          logger.info("{} uploaded to Azure Data Lake successfully. Marking complete",
+              path.toString());
         });
-      } catch (InterruptedException | ExecutionException e) {
-        logger.error("{}", e.getMessage());
+      }
+    });
+  }
+
+  /**
+   * Utility function that cancels all the executing completable futures
+   * in case of one failure. In case of success, it collects
+   * all the results and returns with completion of all the futures.
+   *
+   * @param futures A List of completable futures
+   * @param <T>     Type of the completable future
+   * @return A promise that manages all the completable futures passed in as parameter along with
+   * the result
+   */
+  private static <T> CompletableFuture<List<T>> cancellingAllOf(List<CompletableFuture<T>> futures) {
+    final AtomicBoolean completedSuccessfully = new AtomicBoolean(true);
+    final CompletableFuture<List<T>> promise = new CompletableFuture<>();
+    final RuntimeException runtimeException = new RuntimeException();
+    List<T> successfulCompletions = new ArrayList<>();
+
+    for (CompletableFuture<T> future : futures) {
+      if (completedSuccessfully.get()) {
+        future.whenComplete((result, ex) -> {
+          if (ex != null) {
+            // Set the atomic boolean flag to false
+            if (completedSuccessfully.compareAndSet(true, false)) {
+              // Cancel all the other executing threads
+              futures.stream()
+                  .filter(f -> f != future)
+                  .forEach(f -> f.cancel(true));
+            }
+            runtimeException.addSuppressed(ex);
+          } else {
+            successfulCompletions.add(result);
+          }
+        });
       }
     }
+
+    // Setup the promise with the appropriate return value
+    if (completedSuccessfully.get()) {
+      promise.complete(successfulCompletions);
+    } else {
+      promise.completeExceptionally(runtimeException);
+    }
+    return promise;
   }
 
   /**
    * Gracefully terminate the executor service.
    *
-   * @param timeoutInSeconds Time to wait in seconds before forcefully
-   *                         shutting down the executor service
+   * @param timeoutInSeconds Time to wait in seconds before forcefully shutting down the executor
+   *                         service
    */
   private void terminate(long timeoutInSeconds) {
     if (this.client != null
