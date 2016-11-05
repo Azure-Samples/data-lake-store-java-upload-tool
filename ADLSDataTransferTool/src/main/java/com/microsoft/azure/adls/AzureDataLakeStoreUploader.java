@@ -116,6 +116,7 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param path                Source path
    * @param executorServicePool Executor Service
+   *
    * @return Target path
    */
   private CompletableFuture<Path> setStatusToInProgress(
@@ -138,6 +139,7 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    * Moves the file to completed status by renaming the file.
    *
    * @param path Source path
+   *
    * @return Target path
    */
   private Path setStatusToCompleted(
@@ -164,6 +166,7 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param path                Source path
    * @param executorServicePool Executor Service
+   *
    * @return Source path
    */
   private CompletableFuture<Path> uploadToAzureDataLakeStore(
@@ -282,10 +285,12 @@ class AzureDataLakeStoreUploader implements AutoCloseable {
    *
    * @param futures A List of completable futures
    * @param <T>     Type of the completable future
+   *
    * @return A promise that manages all the completable futures passed in as parameter along with
-   * the result
+   *          the result
    */
-  private static <T> CompletableFuture<List<T>> cancellingAllOf(List<CompletableFuture<T>> futures) {
+  private static <T> CompletableFuture<List<T>> cancellingAllOf(
+      List<CompletableFuture<T>> futures) {
     final AtomicBoolean completedSuccessfully = new AtomicBoolean(true);
     final CompletableFuture<List<T>> promise = new CompletableFuture<>();
     final RuntimeException runtimeException = new RuntimeException();
