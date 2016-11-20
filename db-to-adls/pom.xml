@@ -40,6 +40,10 @@
         <logback.version>1.1.7</logback.version>
         <sl4j.version>1.7.21</sl4j.version>
         <scopt.version>3.5.0</scopt.version>
+        <h2.database.version>1.4.193</h2.database.version>
+        <slick.version>3.1.1</slick.version>
+        <joda-time.version>2.9.6</joda-time.version>
+        <joda-convert.version>1.8.1</joda-convert.version>
         <azure-data-lake-store-sdk.version>2.0.4-SNAPSHOT</azure-data-lake-store-sdk.version>
     </properties>
 
@@ -61,6 +65,32 @@
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
             <version>${scala.version}</version>
+        </dependency>
+
+        <!-- Joda -->
+        <dependency>
+            <groupId>org.joda</groupId>
+            <artifactId>joda-convert</artifactId>
+            <version>${joda-convert.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+            <version>${joda-time.version}</version>
+        </dependency>
+
+        <!-- Slick -->
+        <dependency>
+            <groupId>com.typesafe.slick</groupId>
+            <artifactId>slick_2.11</artifactId>
+            <version>${slick.version}</version>
+        </dependency>
+
+        <!-- In Memory Database -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.database.version}</version>
         </dependency>
 
         <!-- Logging -->

@@ -34,7 +34,7 @@ java \
 ###Uploads all csv files from local folder to Azure Data Lake
 ```
 java \
-    -jar target/target/db-to-adls-0.1-jar-with-dependencies.jar \
+    -jar target/db-to-adls-0.1-jar-with-dependencies.jar \
     --clientId 0b83a076-69e2-410e-b6b4-399ff2e63e23\
     --authTokenEndpoint https://login.microsoftonline.com/fb9dfeb9-5261-4b98-88ff-917109fb067f/oauth2/token\
     --clientKey u50xD1RG4GlECn7KlCdW8DEVMEMB+FZmiSisTpI9Ugo=\

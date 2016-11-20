@@ -3,31 +3,16 @@ package com.microsoft.azure.adls
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
-import org.slf4j.LoggerFactory
+import com.microsoft.azure.adls.StateSchema.{State, Status}
+import org.joda.time.DateTime
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
   * Contains utility functions to parse command line arguments.
   */
 class App {
 
-  case class Config(
-                     clientId: String = null,
-                     authTokenEndpoint: String = null,
-                     clientKey: String = null,
-                     accountFQDN: String = null,
-                     destination: String = null,
-                     octalPermissions: String = null,
-                     desiredParallelism: Int = 0,
-                     desiredBufferSize: Int = 0,
-                     logFilePath: String = null)
-
-  def getApplicationName: String = new java.io.File(classOf[App]
-    .getProtectionDomain
-    .getCodeSource
-    .getLocation
-    .getPath)
-    .getName
-
+  import App._
 
   /**
     * Parses the command line arguments using scopt
@@ -35,8 +20,8 @@ class App {
     * @param args Command line arguments
     * @return A valid configuration object parsing was successful
     */
-  def parse(args: Array[String]): Option[Config] = {
-    val parser = new scopt.OptionParser[Config](getApplicationName) {
+  def parse(args: Array[String]): Option[DataTransferConfig] = {
+    val parser = new scopt.OptionParser[DataTransferConfig](getApplicationName) {
       override def showUsageOnError = true
 
       // Setup the parser
@@ -88,10 +73,14 @@ class App {
         .required()
         .action { (x, c) => c.copy(logFilePath = x) }
         .text("Log file path")
+      opt[Unit]('r', "reprocess")
+        .optional()
+        .action((_, c) => c.copy(reprocess = true))
+        .text("Indicates that you want to reprocess the table and/or partition")
     }
 
     // Evaluate
-    parser.parse(args, Config()) match {
+    parser.parse(args, DataTransferConfig()) match {
       case Some(config) =>
         Some(config)
       case None =>
@@ -104,7 +93,72 @@ class App {
   * Companion
   */
 object App {
-  val logger = LoggerFactory.getLogger(classOf[App])
+
+  case class DataTransferConfig(
+                                 clientId: String = null,
+                                 authTokenEndpoint: String = null,
+                                 clientKey: String = null,
+                                 accountFQDN: String = null,
+                                 destination: String = null,
+                                 octalPermissions: String = null,
+                                 desiredParallelism: Int = 0,
+                                 desiredBufferSize: Int = 0,
+                                 logFilePath: String = null,
+                                 reprocess: Boolean = false)
+
+  def getApplicationName: String = new java.io.File(classOf[App]
+    .getProtectionDomain
+    .getCodeSource
+    .getLocation
+    .getPath)
+    .getName
+
+  /**
+    * Re-initializes the logger
+    *
+    * @param logPath Log path
+    * @param logFile Log file
+    */
+  def reInitializeLogger(logPath: String, logFile: String): Unit = {
+    // Reset the logger context
+    System.setProperty("log_path", logPath)
+    System.setProperty("log_file", logFile)
+
+    // Reload the logger context
+    // to pick up the log path and log file
+    val context: LoggerContext = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
+    val contextInitializer: ContextInitializer = new ContextInitializer(context)
+    context.reset()
+    try {
+      contextInitializer.autoConfig()
+    } catch {
+      case e: JoranException =>
+        println(s"Error parsing the command line arguments ${e.getMessage}")
+    }
+  }
+
+  /**
+    * Logs a startup message to the log
+    *
+    * @param logger          Logger used by the application
+    * @param applicationName Name of the application
+    * @param config          Data Transfer configuration
+    */
+  def logStartupMessage(logger: Logger,
+                        applicationName: String,
+                        config: DataTransferConfig): Unit = {
+    logger.info(s"$applicationName starting with command line arguments: ")
+    logger.info(s"\t Client id: ${config.clientId}")
+    logger.info(s"\t Client key: ${config.clientKey}")
+    logger.info(s"\t Authentication token endpoint: ${config.authTokenEndpoint}")
+    logger.info(s"\t Account FQDN: ${config.accountFQDN}")
+    logger.info(s"\t Destination root folder: ${config.destination}")
+    logger.info(s"\t Octal permissions: ${config.octalPermissions}")
+    logger.info(s"\t Desired parallelism: ${config.desiredParallelism}")
+    logger.info(s"\t Desired buffer size: ${config.desiredBufferSize}")
+    logger.info(s"\t Log file path: ${config.logFilePath}")
+    logger.info(s"\t Re-process triggered: ${config.reprocess}")
+  }
 
   /**
     * Entry point for the application.
@@ -119,29 +173,19 @@ object App {
       System.exit(-1)
     }
 
-    logger.info(s"${app.getApplicationName} starting with command line arguments: ")
-    logger.info(s"\t Client id: ${config.get.clientId}")
-    logger.info(s"\t Client key: ${config.get.clientKey}")
-    logger.info(s"\t Authentication token endpoint: ${config.get.authTokenEndpoint}")
-    logger.info(s"\t Account FQDN: ${config.get.accountFQDN}")
-    logger.info(s"\t Destination root folder: ${config.get.destination}")
-    logger.info(s"\t Octal permissions: ${config.get.octalPermissions}")
-    logger.info(s"\t Desired parallelism: ${config.get.desiredParallelism}")
-    logger.info(s"\t Desired buffer size: ${config.get.desiredBufferSize}")
-    logger.info(s"\t Log file path: ${config.get.logFilePath}")
+    reInitializeLogger(config.get.logFilePath, getApplicationName)
 
-    // Reset the logger context
-    System.setProperty("log_path", config.get.logFilePath)
-    System.setProperty("log_file", s"${app.getApplicationName}.log")
-    // Reload the logger context
-    // to pick up the log path and log file
-    val context: LoggerContext = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
-    val contextInitializer: ContextInitializer = new ContextInitializer(context)
-    context.reset()
-    try {
-      contextInitializer.autoConfig()
-    } catch {
-      case e: JoranException => logger.error("Error parsing the command line arguments", e)
-    }
+    val logger = LoggerFactory.getLogger(classOf[App])
+    logStartupMessage(logger, getApplicationName, config.get)
+
+    def freshTestData = Seq(
+      State("pos", Some("20100101"), "BLAH BLAH", "/asdf/asdf/as/", Some(DateTime.now), Status.Init),
+      State("pos", None, "BLAH BLAH", "/asdf/asdf/as/", Some(DateTime.now), Status.Init),
+      State("dim", Some("20100101"), "BLAH BLAH", "/asdf/asdf/as/", None, Status.Init)
+    )
+
+    StateSchema.init()
+    StateSchema.insert(freshTestData)
+    StateSchema.print()
   }
 }
