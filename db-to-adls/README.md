@@ -43,5 +43,7 @@ java \
     --octalPermissions 755\
     --desiredParallelism 4\
     --desiredBufferSize 256\
-    --logFilePath /Users/gaswamin/oss/data-lake-store-java-upload-tool/db-to-adls
+    --logFilePath /Users/gaswamin/oss/data-lake-store-java-upload-tool/db-to-adls\
+    --source t1=c1,t2=c2,t3=,t4=c4\
+    --partitions 1,2,3
 ```

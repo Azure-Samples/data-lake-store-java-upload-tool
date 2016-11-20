@@ -3,8 +3,9 @@ package com.microsoft.azure.adls
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
-import com.microsoft.azure.adls.StateSchema.{State, Status}
-import org.joda.time.DateTime
+import org.apache.camel.CamelContext
+import org.apache.camel.impl.DefaultCamelContext
+import org.apache.camel.scala.dsl.builder.RouteBuilder
 import org.slf4j.{Logger, LoggerFactory}
 
 /**
@@ -59,7 +60,7 @@ class App {
           else
             c.copy(desiredParallelism = Runtime.getRuntime.availableProcessors())
         }
-        .text("Desired level of parallelism.This will impact your available network bandwidth")
+        .text("Desired level of parallelism.This will impact your available network bandwidth and source system resources")
       opt[Int]('b', "desiredBufferSize")
         .required()
         .action { (x, c) =>
@@ -77,6 +78,26 @@ class App {
         .optional()
         .action((_, c) => c.copy(reprocess = true))
         .text("Indicates that you want to reprocess the table and/or partition")
+      opt[Map[String, String]]('s', "source")
+        .required()
+        .valueName("k1=v1, k2=v2...")
+        .action((x, c) => {
+          var m: Map[String, Option[String]] = Map()
+          x.foreach((kv) => {
+            if (kv._2.trim.isEmpty) {
+              m += (kv._1 -> None)
+            } else {
+              m += (kv._1 -> Some(kv._2))
+            }
+          })
+          c.copy(sourceTablePartitionMapping = m)
+        })
+        .text("Please provide table name and partition column.")
+      opt[Seq[String]]('a', "partitions")
+        .optional()
+        .valueName("partition1,partition2...")
+        .action((x, c) => c.copy(partitions = x))
+        .text("Specific partitions that need to be transferred. Can be used for incremental transfer or in combination with reprocess flag")
     }
 
     // Evaluate
@@ -104,7 +125,9 @@ object App {
                                  desiredParallelism: Int = 0,
                                  desiredBufferSize: Int = 0,
                                  logFilePath: String = null,
-                                 reprocess: Boolean = false)
+                                 reprocess: Boolean = false,
+                                 sourceTablePartitionMapping: Map[String, Option[String]] = Map(),
+                                 partitions: Seq[String] = Seq())
 
   def getApplicationName: String = new java.io.File(classOf[App]
     .getProtectionDomain
@@ -158,6 +181,14 @@ object App {
     logger.info(s"\t Desired buffer size: ${config.desiredBufferSize}")
     logger.info(s"\t Log file path: ${config.logFilePath}")
     logger.info(s"\t Re-process triggered: ${config.reprocess}")
+    logger.info(s"\t Source table partition mapping:")
+    config.sourceTablePartitionMapping foreach ((source) => {
+      logger.info(s"\t\t\t ${source._1} - ${source._2}")
+    })
+    logger.info(s"\t Partitions:")
+    config.partitions.foreach((partition) => {
+      logger.info(s"\t\t\t $partition")
+    })
   }
 
   /**
@@ -178,14 +209,13 @@ object App {
     val logger = LoggerFactory.getLogger(classOf[App])
     logStartupMessage(logger, getApplicationName, config.get)
 
-    def freshTestData = Seq(
-      State("pos", Some("20100101"), "BLAH BLAH", "/asdf/asdf/as/", Some(DateTime.now), Status.Init),
-      State("pos", None, "BLAH BLAH", "/asdf/asdf/as/", Some(DateTime.now), Status.Init),
-      State("dim", Some("20100101"), "BLAH BLAH", "/asdf/asdf/as/", None, Status.Init)
-    )
-
-    StateSchema.init()
-    StateSchema.insert(freshTestData)
-    StateSchema.print()
+    // Start the execution
+    val context: CamelContext = new DefaultCamelContext
+    val routeBuilder = new RouteBuilder {
+      from("file:~/data/") --> ("file:data/outbox")
+    }
+    context.addRoutes(routeBuilder)
+    context.start
+    while (true) {}
   }
 }
