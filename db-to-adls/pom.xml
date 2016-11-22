@@ -42,10 +42,10 @@
         <scopt.version>3.5.0</scopt.version>
         <joda-time.version>2.9.6</joda-time.version>
         <joda-convert.version>1.8.1</joda-convert.version>
-        <camel.version>2.18.0</camel.version>
         <azure-data-lake-store-sdk.version>2.0.4-SNAPSHOT</azure-data-lake-store-sdk.version>
     </properties>
 
+    <!-- Repository Settings -->
     <repositories>
         <repository>
             <id>snapshots-repo</id>
@@ -59,6 +59,7 @@
         </repository>
     </repositories>
 
+    <!-- Dependencies -->
     <dependencies>
         <dependency>
             <groupId>org.scala-lang</groupId>
@@ -102,12 +103,13 @@
             <version>${scopt.version}</version>
         </dependency>
 
-        <!-- Camel -->
+        <!-- Azure -->
         <dependency>
-            <groupId>org.apache.camel</groupId>
-            <artifactId>camel-scala</artifactId>
-            <version>${camel.version}</version>
+            <groupId>com.microsoft.azure</groupId>
+            <artifactId>azure-data-lake-store-sdk</artifactId>
+            <version>${azure-data-lake-store-sdk.version}</version>
         </dependency>
+
     </dependencies>
 
     <build>
