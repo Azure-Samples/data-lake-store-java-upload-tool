@@ -7,7 +7,9 @@ package com.microsoft.azure.adls.db
   * @param partitionName    Name of the partition
   * @param subPartitionName Name of the sub-partition
   */
-case class PartitionMetadata(tableName: String, partitionName: Option[String], subPartitionName: Option[String])
+case class PartitionMetadata(tableName: String,
+                             partitionName: Option[String],
+                             subPartitionName: Option[String])
 
 /**
   * A trait that defines the methods that support metadata extraction
@@ -15,9 +17,11 @@ case class PartitionMetadata(tableName: String, partitionName: Option[String], s
   */
 trait Metadata {
 
-  def generateSqlToGetPartitions(tables: Seq[String], partitions: Option[Seq[String]]): String
+  def generateSqlToGetPartitions(tables: Seq[String],
+                                 partitions: Seq[String]): String
 
   def generateSqlToGetColumnNames(tableName: String): String
 
-  def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata, columns: Seq[String]): String
+  def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata,
+                                      columns: Seq[String]): String
 }

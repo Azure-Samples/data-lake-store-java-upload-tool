@@ -29,16 +29,16 @@ class ADLSUploader(clientId: String,
   // You can abstract the store client outside of this class.
   // However, the tokens expire after an hour and forces renewal.
   // Better to abstract this per upload to avoid exceptions and reduce complexity.
-  lazy val adlStoreClient = getAzureDataLakeStoreClient(accountFQDN,
+  private lazy val adlStoreClient = getAzureDataLakeStoreClient(accountFQDN,
     getAzureADToken(clientId,
       clientKey,
       authenticationTokenEndpoint))
-  lazy val stream: OutputStream = adlStoreClient.createFile(path,
+  private lazy val stream: OutputStream = adlStoreClient.createFile(path,
     IfExists.OVERWRITE,
     octalPermissions,
     true)
-  var currentBufferSize: Int = 0
-  var bufferBuilder = new mutable.ArrayBuilder.ofByte()
+  private var currentBufferSize: Int = 0
+  private var bufferBuilder = new mutable.ArrayBuilder.ofByte()
 
   /**
     * Buffers the data until it reaches the threshold
@@ -87,9 +87,9 @@ class ADLSUploader(clientId: String,
     *                                    you registered with active directory
     * @return Azure AD Token
     */
-  def getAzureADToken(clientId: String,
-                      clientKey: String,
-                      authenticationTokenEndpoint: String): AzureADToken = {
+  private def getAzureADToken(clientId: String,
+                              clientKey: String,
+                              authenticationTokenEndpoint: String): AzureADToken = {
     AzureADAuthenticator.getTokenUsingClientCreds(
       authenticationTokenEndpoint,
       clientId,
@@ -103,8 +103,8 @@ class ADLSUploader(clientId: String,
     * @param azureADToken Azure AD Token. You can use getAzureADToken to get a valid token.
     * @return Azure Data Lake Store client
     */
-  def getAzureDataLakeStoreClient(accountFQDN: String,
-                                  azureADToken: AzureADToken): ADLStoreClient = {
+  private def getAzureDataLakeStoreClient(accountFQDN: String,
+                                          azureADToken: AzureADToken): ADLStoreClient = {
     ADLStoreClient.createClient(
       accountFQDN,
       azureADToken)

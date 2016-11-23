@@ -1,8 +1,11 @@
 package com.microsoft.azure.adls
 
+import java.nio.charset.StandardCharsets
+
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
+import com.microsoft.azure.adls.db.{DBManager, OracleMetadata, PartitionMetadata}
 import org.slf4j.{Logger, LoggerFactory}
 
 /**
@@ -118,25 +121,25 @@ class App {
   */
 object App {
 
-  case class DataTransferConfig(
-                                 clientId: String = null,
-                                 authTokenEndpoint: String = null,
-                                 clientKey: String = null,
-                                 accountFQDN: String = null,
-                                 destination: String = null,
-                                 octalPermissions: String = null,
-                                 desiredParallelism: Int = 0,
-                                 desiredBufferSize: Int = 0,
-                                 logFilePath: String = null,
-                                 reprocess: Boolean = false,
-                                 driver: String = null,
-                                 connectStringUrl: String = null,
-                                 username: String = null,
-                                 password: String = null,
-                                 tables: Seq[String] = Seq(),
-                                 partitions: Seq[String] = Seq())
+  private case class DataTransferConfig(
+                                         clientId: String = null,
+                                         authTokenEndpoint: String = null,
+                                         clientKey: String = null,
+                                         accountFQDN: String = null,
+                                         destination: String = null,
+                                         octalPermissions: String = null,
+                                         desiredParallelism: Int = 0,
+                                         desiredBufferSize: Int = 0,
+                                         logFilePath: String = null,
+                                         reprocess: Boolean = false,
+                                         driver: String = null,
+                                         connectStringUrl: String = null,
+                                         username: String = null,
+                                         password: String = null,
+                                         tables: Seq[String] = Seq(),
+                                         partitions: Seq[String] = Seq())
 
-  def getApplicationName: String = new java.io.File(classOf[App]
+  private def getApplicationName: String = new java.io.File(classOf[App]
     .getProtectionDomain
     .getCodeSource
     .getLocation
@@ -149,7 +152,8 @@ object App {
     * @param logPath Log path
     * @param logFile Log file
     */
-  def reInitializeLogger(logPath: String, logFile: String): Unit = {
+  private def reInitializeLogger(logPath: String,
+                                 logFile: String): Unit = {
     // Reset the logger context
     System.setProperty("log_path", logPath)
     System.setProperty("log_file", logFile)
@@ -174,9 +178,9 @@ object App {
     * @param applicationName Name of the application
     * @param config          Data Transfer configuration
     */
-  def logStartupMessage(logger: Logger,
-                        applicationName: String,
-                        config: DataTransferConfig): Unit = {
+  private def logStartupMessage(logger: Logger,
+                                applicationName: String,
+                                config: DataTransferConfig): Unit = {
     logger.info(s"$applicationName starting with command line arguments: ")
     logger.info(s"\t Client id: ${config.clientId}")
     logger.info(s"\t Client key: ${config.clientKey}")
@@ -202,6 +206,33 @@ object App {
   }
 
   /**
+    * Generate ADLS Path given the partition metadata
+    *
+    * @param destination       Root folder structure
+    * @param partitionMetadata Partition structure in the database backend
+    * @return Full Path of ADLS file
+    */
+  private def getADLSPath(destination: String,
+                          partitionMetadata: PartitionMetadata): String = {
+    val fullPath: StringBuilder = new StringBuilder
+    val fileName: StringBuilder = new StringBuilder
+    fullPath ++= s"$destination/"
+    fullPath ++= s"${partitionMetadata.tableName}/"
+    if (partitionMetadata.partitionName.isDefined) {
+      fullPath ++= s"${partitionMetadata.partitionName.get}/"
+      fileName ++= s"${partitionMetadata.partitionName.get}_"
+    }
+    if (partitionMetadata.subPartitionName.isDefined) {
+      fullPath ++= s"${partitionMetadata.subPartitionName.get}/"
+      fileName ++= s"${partitionMetadata.subPartitionName.get}_"
+    }
+    fileName ++= s"${partitionMetadata.tableName}.tsv"
+    fullPath ++= fileName
+
+    fullPath.toString()
+  }
+
+  /**
     * Entry point for the application.
     *
     * @param args Command line arguments
@@ -218,5 +249,63 @@ object App {
 
     val logger = LoggerFactory.getLogger(classOf[App])
     logStartupMessage(logger, getApplicationName, config.get)
+
+    // Collect the metadata required for
+    // fetching the data from the source database
+    val metadataCollection: Seq[PartitionMetadata] = DBManager.sql(config.get.driver,
+      config.get.connectStringUrl,
+      config.get.username,
+      config.get.password,
+      OracleMetadata.generateSqlToGetPartitions(
+        config.get.tables,
+        config.get.partitions))
+      .map(resultSet => PartitionMetadata(resultSet.getString(0),
+        Option(resultSet.getString(1)),
+        Option(resultSet.getString(2))))
+
+    // Iterate through the metadata collection
+    // and go through the algorithm:
+    //     1. Initialize the uploader
+    //     2. Get the column list
+    //     3. Fetch the data
+    //     4. Convert data to byte array
+    //     5. Upload the data to Azure Data Lake Store
+    metadataCollection.foreach(metadata => {
+      // 1. Initialize the uploader
+      val uploader = new ADLSUploader(config.get.clientId,
+        config.get.clientKey,
+        config.get.authTokenEndpoint,
+        config.get.accountFQDN,
+        getADLSPath(config.get.destination, metadata),
+        config.get.octalPermissions,
+        config.get.desiredBufferSize * 1024 * 1024)
+
+      // 2. Get the column list
+      // 2.a. Upload the header string
+      val columnCollection: Seq[String] = DBManager.sql(config.get.driver,
+        config.get.connectStringUrl,
+        config.get.username,
+        config.get.password,
+        OracleMetadata.generateSqlToGetColumnNames(metadata.tableName))
+        .map(resultSet => resultSet.getString(0))
+      uploader.bufferedUpload(s"${columnCollection.mkString("\\t")}\\n"
+        .getBytes(StandardCharsets.UTF_8))
+
+      // 3. Fetch the data
+      // 4. Convert data to byte array
+      // 5. Upload the data to Azure Data Lake Store
+      DBManager.sql(config.get.driver,
+        config.get.connectStringUrl,
+        config.get.username,
+        config.get.password,
+        OracleMetadata.generateSqlToGetDataByPartition(metadata, columnCollection))
+        .map(resultSet => DBManager.resultSetToByteArray(resultSet,
+          columnCollection,
+          "\\t",
+          "\\n"))
+        .foreach(uploader.bufferedUpload)
+
+      uploader.close()
+    })
   }
 }

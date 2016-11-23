@@ -1,6 +1,11 @@
 package com.microsoft.azure.adls.db
 
+import java.nio.charset.StandardCharsets
 import java.sql.{Connection, DriverManager, ResultSet, Statement}
+
+import org.slf4j.LoggerFactory
+
+import scala.collection.mutable
 
 
 /**
@@ -8,6 +13,8 @@ import java.sql.{Connection, DriverManager, ResultSet, Statement}
   * Loan pattern
   */
 object DBManager {
+  private val logger = LoggerFactory.getLogger("DBManager")
+
   /**
     * Stream a SQL Query
     *
@@ -23,6 +30,7 @@ object DBManager {
           username: String,
           password: String,
           sqlStatement: String): Stream[ResultSet] = {
+    logger.debug(s"Executing SQL Statement: $sqlStatement")
     withStatement(driver,
       connectionStringUri,
       username,
@@ -35,6 +43,33 @@ object DBManager {
             def next = resultSet
           }.toStream
       })
+  }
+
+  /**
+    * Convert result set to byte array
+    *
+    * @param resultSet       Result set
+    * @param columns         A collection of columns
+    * @param columnSeparator Column separator
+    * @param rowSeparator    Row separator
+    * @return Returns a byte array
+    */
+  def resultSetToByteArray(resultSet: ResultSet,
+                           columns: Seq[String],
+                           columnSeparator: String,
+                           rowSeparator: String): Array[Byte] = {
+    var builder: mutable.ArrayBuilder[Byte] = new mutable.ArrayBuilder.ofByte
+    for (columnCount <- 0 to columns.length) {
+      if (columnCount > 0) {
+        builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)
+      }
+      val datum = resultSet.getBytes(columnCount)
+      if (datum != null)
+        builder ++= datum
+    }
+    builder ++= rowSeparator.getBytes(StandardCharsets.UTF_8)
+
+    builder.result()
   }
 
   /**
