@@ -1,6 +1,7 @@
 package com.microsoft.azure.adls
 
 import java.nio.charset.StandardCharsets
+import java.sql.ResultSet
 
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
@@ -228,16 +229,17 @@ object App {
 
     // Collect the metadata required for
     // fetching the data from the source database
-    val metadataCollection: Seq[PartitionMetadata] = DBManager.sql(config.get.driver,
+    val metadataCollection: Seq[PartitionMetadata] = DBManager.sql[PartitionMetadata](config.get.driver,
       config.get.connectStringUrl,
       config.get.username,
       config.get.password,
       app.generateSqlToGetPartitions(
         config.get.tables,
-        config.get.partitions))
-      .map(resultSet => PartitionMetadata(resultSet.getString(0),
-        Option(resultSet.getString(1)),
-        Option(resultSet.getString(2))))
+        config.get.partitions), { resultSet: ResultSet =>
+        PartitionMetadata(resultSet.getString(0),
+          Option(resultSet.getString(1)),
+          Option(resultSet.getString(2)))
+      })
     metadataCollection.foreach(metadata =>
       logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
 
@@ -267,28 +269,29 @@ object App {
 
       // 2. Get the column list
       // 3. Upload the header string
-      val columnCollection: Seq[String] = DBManager.sql(config.get.driver,
+      val columnCollection: Seq[String] = DBManager.sql[String](config.get.driver,
         config.get.connectStringUrl,
         config.get.username,
         config.get.password,
-        app.generateSqlToGetColumnNames(metadata.tableName))
-        .map(resultSet => resultSet.getString(0))
+        app.generateSqlToGetColumnNames(metadata.tableName), { resultSet: ResultSet =>
+          resultSet.getString(0)
+        })
       uploader.bufferedUpload(s"${columnCollection.mkString("\\t")}\\n"
         .getBytes(StandardCharsets.UTF_8))
 
       // 4. Fetch the data
       // 5. Convert data to byte array
       // 6. Upload the data to Azure Data Lake Store
-      DBManager.sql(config.get.driver,
+      DBManager.sql[Array[Byte]](config.get.driver,
         config.get.connectStringUrl,
         config.get.username,
         config.get.password,
-        app.generateSqlToGetDataByPartition(metadata, columnCollection))
-        .map(resultSet => DBManager.resultSetToByteArray(resultSet,
-          columnCollection,
-          "\\t",
-          "\\n"))
-        .foreach(uploader.bufferedUpload)
+        app.generateSqlToGetDataByPartition(metadata, columnCollection), { resultSet: ResultSet =>
+          DBManager.resultSetToByteArray(resultSet,
+            columnCollection,
+            "\\t",
+            "\\n")
+        }).foreach(uploader.bufferedUpload)
 
       uploader.close()
 

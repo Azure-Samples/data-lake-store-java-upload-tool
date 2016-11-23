@@ -23,13 +23,16 @@ object DBManager {
     * @param username            Username
     * @param password            Password
     * @param sqlStatement        SQL Statement to execute
-    * @return Resultset Stream
+    * @param f                   Function to map over resultset
+    * @tparam R Type of the mapped result
+    * @return Mapped resultset
     */
-  def sql(driver: String,
-          connectionStringUri: String,
-          username: String,
-          password: String,
-          sqlStatement: String): Stream[ResultSet] = {
+  def sql[R](driver: String,
+             connectionStringUri: String,
+             username: String,
+             password: String,
+             sqlStatement: String,
+             f: (ResultSet) => R): Stream[R] = {
     logger.debug(s"Executing SQL Statement: $sqlStatement")
     withStatement(driver,
       connectionStringUri,
@@ -38,10 +41,10 @@ object DBManager {
         statement =>
           val resultSet = statement executeQuery sqlStatement
           new Iterator[ResultSet] {
-            def hasNext = resultSet.next
+            def hasNext: Boolean = resultSet.next
 
-            def next = resultSet
-          }.toStream
+            def next: ResultSet = resultSet
+          }.map(f).toStream
       })
   }
 
