@@ -8,7 +8,7 @@ to Azure Data Lake.
 - A valid Azure subscription
 - Azure Data Lake Store account. Follow the instructions at [Get started with Azure Data Lake Store using the Azure Portal](https://azure.microsoft.com/en-us/documentation/articles/data-lake-store-get-started-portal/)
 - An Active Directory Application. Follow the instructions at [Create an Active Directory Application](https://azure.microsoft.com/en-us/documentation/articles/data-lake-store-authenticate-using-active-directory/#create-an-active-directory-application)
-- Valid Oracle account if you are using Oracle as your backend. If not please remove the dependency in pom.xml.
+- A valid database backend and the necessary JDBC drivers installed on the server where this code is executed
 
 #How to use
 
@@ -20,10 +20,6 @@ For developers, please run
 `mvn clean compile scalastyle:check install package`
 After you run the command, please navigate to target/scalastyle-output.xml
 to check style check issues if any.
-
-I am taking a dependency on Oracle as that is the first backend being targeted. To that extent,
-I am taking a dependency on the Oracle Maven Repository. Please follow [instructions](https://blogs.oracle.com/dev2dev/entry/how_to_get_oracle_jdbc#settings)
-to ensure your development & CI environment is setup appropriately.
 
 ##Usage
 ```

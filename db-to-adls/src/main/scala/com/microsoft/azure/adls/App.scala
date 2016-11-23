@@ -6,7 +6,7 @@ import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
 import com.microsoft.azure.adls.db.{DBManager, OracleMetadata, PartitionMetadata}
-import org.slf4j.{Logger, LoggerFactory}
+import org.slf4j.{Logger, LoggerFactory, Marker, MarkerFactory}
 
 /**
   * Contains utility functions to parse command line arguments.
@@ -114,37 +114,6 @@ class App {
         None
     }
   }
-}
-
-/**
-  * Companion
-  */
-object App {
-
-  private case class DataTransferConfig(
-                                         clientId: String = null,
-                                         authTokenEndpoint: String = null,
-                                         clientKey: String = null,
-                                         accountFQDN: String = null,
-                                         destination: String = null,
-                                         octalPermissions: String = null,
-                                         desiredParallelism: Int = 0,
-                                         desiredBufferSize: Int = 0,
-                                         logFilePath: String = null,
-                                         reprocess: Boolean = false,
-                                         driver: String = null,
-                                         connectStringUrl: String = null,
-                                         username: String = null,
-                                         password: String = null,
-                                         tables: Seq[String] = Seq(),
-                                         partitions: Seq[String] = Seq())
-
-  private def getApplicationName: String = new java.io.File(classOf[App]
-    .getProtectionDomain
-    .getCodeSource
-    .getLocation
-    .getPath)
-    .getName
 
   /**
     * Re-initializes the logger
@@ -204,33 +173,38 @@ object App {
       logger.info(s"\t\t\t $partition")
     })
   }
+}
 
-  /**
-    * Generate ADLS Path given the partition metadata
-    *
-    * @param destination       Root folder structure
-    * @param partitionMetadata Partition structure in the database backend
-    * @return Full Path of ADLS file
-    */
-  private def getADLSPath(destination: String,
-                          partitionMetadata: PartitionMetadata): String = {
-    val fullPath: StringBuilder = new StringBuilder
-    val fileName: StringBuilder = new StringBuilder
-    fullPath ++= s"$destination/"
-    fullPath ++= s"${partitionMetadata.tableName}/"
-    if (partitionMetadata.partitionName.isDefined) {
-      fullPath ++= s"${partitionMetadata.partitionName.get}/"
-      fileName ++= s"${partitionMetadata.partitionName.get}_"
-    }
-    if (partitionMetadata.subPartitionName.isDefined) {
-      fullPath ++= s"${partitionMetadata.subPartitionName.get}/"
-      fileName ++= s"${partitionMetadata.subPartitionName.get}_"
-    }
-    fileName ++= s"${partitionMetadata.tableName}.tsv"
-    fullPath ++= fileName
+/**
+  * Companion
+  */
+object App {
 
-    fullPath.toString()
-  }
+  case class DataTransferConfig(
+                                 clientId: String = null,
+                                 authTokenEndpoint: String = null,
+                                 clientKey: String = null,
+                                 accountFQDN: String = null,
+                                 destination: String = null,
+                                 octalPermissions: String = null,
+                                 desiredParallelism: Int = 0,
+                                 desiredBufferSize: Int = 0,
+                                 logFilePath: String = null,
+                                 reprocess: Boolean = false,
+                                 driver: String = null,
+                                 connectStringUrl: String = null,
+                                 username: String = null,
+                                 password: String = null,
+                                 tables: Seq[String] = Seq(),
+                                 partitions: Seq[String] = Seq())
+
+  private def getApplicationName: String = new java.io.File(classOf[App]
+    .getProtectionDomain
+    .getCodeSource
+    .getLocation
+    .getPath)
+    .getName
+
 
   /**
     * Entry point for the application.
@@ -238,17 +212,17 @@ object App {
     * @param args Command line arguments
     */
   def main(args: Array[String]): Unit = {
-    val app = new App()
+    val app = new App() with OracleMetadata
 
     val config = app.parse(args)
     if (config.isEmpty) {
       System.exit(-1)
     }
 
-    reInitializeLogger(config.get.logFilePath, getApplicationName)
+    app.reInitializeLogger(config.get.logFilePath, getApplicationName)
 
     val logger = LoggerFactory.getLogger(classOf[App])
-    logStartupMessage(logger, getApplicationName, config.get)
+    app.logStartupMessage(logger, getApplicationName, config.get)
 
     // Collect the metadata required for
     // fetching the data from the source database
@@ -256,49 +230,55 @@ object App {
       config.get.connectStringUrl,
       config.get.username,
       config.get.password,
-      OracleMetadata.generateSqlToGetPartitions(
+      app.generateSqlToGetPartitions(
         config.get.tables,
         config.get.partitions))
       .map(resultSet => PartitionMetadata(resultSet.getString(0),
         Option(resultSet.getString(1)),
         Option(resultSet.getString(2))))
+    metadataCollection.foreach(metadata =>
+      logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
 
     // Iterate through the metadata collection
     // and go through the algorithm:
-    //     1. Initialize the uploader
-    //     2. Get the column list
-    //     3. Fetch the data
-    //     4. Convert data to byte array
-    //     5. Upload the data to Azure Data Lake Store
     metadataCollection.foreach(metadata => {
+      val path: String = ADLSUploader.getADLSPath(config.get.destination, metadata)
+      val parentMarker: Marker = MarkerFactory.getMarker("DATA TRANSFER")
+      val childMarker: Marker = MarkerFactory.getMarker(path)
+      parentMarker.add(childMarker)
+
+      logger.info(childMarker,
+        s"""Initializing transfer of Table: ${metadata.tableName}, Partition: ${metadata.partitionName},
+           |Sub-Partition: ${metadata.subPartitionName}, Destination: $path""".stripMargin)
+
       // 1. Initialize the uploader
-      val uploader = new ADLSUploader(config.get.clientId,
+      val uploader = ADLSUploader(config.get.clientId,
         config.get.clientKey,
         config.get.authTokenEndpoint,
         config.get.accountFQDN,
-        getADLSPath(config.get.destination, metadata),
+        path,
         config.get.octalPermissions,
         config.get.desiredBufferSize * 1024 * 1024)
 
       // 2. Get the column list
-      // 2.a. Upload the header string
+      // 3. Upload the header string
       val columnCollection: Seq[String] = DBManager.sql(config.get.driver,
         config.get.connectStringUrl,
         config.get.username,
         config.get.password,
-        OracleMetadata.generateSqlToGetColumnNames(metadata.tableName))
+        app.generateSqlToGetColumnNames(metadata.tableName))
         .map(resultSet => resultSet.getString(0))
       uploader.bufferedUpload(s"${columnCollection.mkString("\\t")}\\n"
         .getBytes(StandardCharsets.UTF_8))
 
-      // 3. Fetch the data
-      // 4. Convert data to byte array
-      // 5. Upload the data to Azure Data Lake Store
+      // 4. Fetch the data
+      // 5. Convert data to byte array
+      // 6. Upload the data to Azure Data Lake Store
       DBManager.sql(config.get.driver,
         config.get.connectStringUrl,
         config.get.username,
         config.get.password,
-        OracleMetadata.generateSqlToGetDataByPartition(metadata, columnCollection))
+        app.generateSqlToGetDataByPartition(metadata, columnCollection))
         .map(resultSet => DBManager.resultSetToByteArray(resultSet,
           columnCollection,
           "\\t",
@@ -306,6 +286,10 @@ object App {
         .foreach(uploader.bufferedUpload)
 
       uploader.close()
+
+      logger.info(childMarker,
+        s"""Completed transfer of Table: ${metadata.tableName}, Partition: ${metadata.partitionName},
+           |Sub-Partition: ${metadata.subPartitionName}, Destination: $path""".stripMargin)
     })
   }
 }

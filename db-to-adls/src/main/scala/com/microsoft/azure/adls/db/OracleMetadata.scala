@@ -3,7 +3,7 @@ package com.microsoft.azure.adls.db
 /**
   * Implementation of the Metadata trait that is specific to Oracle
   */
-object OracleMetadata extends Metadata {
+trait OracleMetadata extends Metadata {
   /**
     * SQL Statement to generate the list of available partitions
     *
@@ -15,10 +15,13 @@ object OracleMetadata extends Metadata {
                                           partitions: Seq[String]): String = {
     val builder: StringBuilder = new StringBuilder
     builder ++=
-      s"""SELECT P.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
-          | ALL_TAB_PARTITIONS P LEFT OUTER JOIN ALL_TAB_SUBPARTITIONS SP ON
-          | P.TABLE_NAME = SP.TABLE_NAME and P.PARTITION_NAME = SP.PARTITION_NAME
-          | WHERE P.TABLE_NAME IN (${tables map (table => s"'$table'") mkString ", "})
+      s"""SELECT T.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
+         | ALL_TABLES T
+         | LEFT OUTER JOIN ALL_TAB_PARTITIONS P ON
+         | T.TABLE_NAME = P.TABLE_NAME
+         | LEFT OUTER JOIN ALL_TAB_SUBPARTITIONS SP ON
+         | P.TABLE_NAME = SP.TABLE_NAME and P.PARTITION_NAME = SP.PARTITION_NAME
+         | WHERE T.TABLE_NAME IN (${tables map (table => s"'$table'") mkString ", "})
        """.stripMargin
     if (partitions.nonEmpty) {
       builder ++= s" AND P.PARTITION_NAME IN (${partitions map (partition => s"'$partition'") mkString ", "})"
