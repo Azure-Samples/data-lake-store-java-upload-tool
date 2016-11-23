@@ -43,6 +43,7 @@
         <joda-time.version>2.9.6</joda-time.version>
         <joda-convert.version>1.8.1</joda-convert.version>
         <azure-data-lake-store-sdk.version>2.0.4-SNAPSHOT</azure-data-lake-store-sdk.version>
+        <oracle-jdbc.version>12.1.0.2</oracle-jdbc.version>
     </properties>
 
     <!-- Repository Settings -->
@@ -56,6 +57,16 @@
             <snapshots>
                 <enabled>true</enabled>
             </snapshots>
+        </repository>
+        <repository>
+            <id>maven.oracle.com</id>
+            <name>oracle-maven-repo</name>
+            <url>https://maven.oracle.com</url>
+            <layout>default</layout>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+            </releases>
         </repository>
     </repositories>
 
@@ -108,6 +119,13 @@
             <groupId>com.microsoft.azure</groupId>
             <artifactId>azure-data-lake-store-sdk</artifactId>
             <version>${azure-data-lake-store-sdk.version}</version>
+        </dependency>
+
+        <!-- Oracle -->
+        <dependency>
+            <groupId>com.oracle.jdbc</groupId>
+            <artifactId>ojdbc7</artifactId>
+            <version>${oracle-jdbc.version}</version>
         </dependency>
 
     </dependencies>

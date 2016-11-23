@@ -8,6 +8,8 @@ import ch.qos.logback.core.joran.spi.JoranException
 import com.microsoft.azure.adls.db.{DBManager, OracleMetadata, PartitionMetadata}
 import org.slf4j.{Logger, LoggerFactory, Marker, MarkerFactory}
 
+import scala.collection.parallel.ForkJoinTaskSupport
+
 /**
   * Contains utility functions to parse command line arguments.
   */
@@ -239,9 +241,12 @@ object App {
     metadataCollection.foreach(metadata =>
       logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
 
+    // Setup support for parallelism
+    val parMetadataCollection = metadataCollection.par
+    parMetadataCollection.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(config.get.desiredParallelism))
     // Iterate through the metadata collection
     // and go through the algorithm:
-    metadataCollection.foreach(metadata => {
+    parMetadataCollection.foreach(metadata => {
       val path: String = ADLSUploader.getADLSPath(config.get.destination, metadata)
       val parentMarker: Marker = MarkerFactory.getMarker("DATA TRANSFER")
       val childMarker: Marker = MarkerFactory.getMarker(path)

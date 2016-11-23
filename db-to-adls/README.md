@@ -10,6 +10,13 @@ to Azure Data Lake.
 - An Active Directory Application. Follow the instructions at [Create an Active Directory Application](https://azure.microsoft.com/en-us/documentation/articles/data-lake-store-authenticate-using-active-directory/#create-an-active-directory-application)
 - A valid database backend and the necessary JDBC drivers installed on the server where this code is executed
 
+** I am taking a strong dependency on Oracle as that is the first backend that will be supported. In order to
+package up the JDBC drivers, you need to go follow [instructions](https://blogs.oracle.com/dev2dev/entry/how_to_get_oracle_jdbc). 
+If your Maven environment is not setup appropriately in your development & CI environment, your build will fail.
+<br/>
+The alternative is to remove the strong dependency on Oracle in POM and add the jar to your classpath. You may 
+have to do this for all the dependencies.
+
 #How to use
 
 ##Building
