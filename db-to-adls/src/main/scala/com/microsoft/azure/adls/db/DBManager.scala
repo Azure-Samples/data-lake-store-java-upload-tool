@@ -62,8 +62,8 @@ object DBManager {
                            columnSeparator: String,
                            rowSeparator: String): Array[Byte] = {
     var builder: mutable.ArrayBuilder[Byte] = new mutable.ArrayBuilder.ofByte
-    for (columnCount <- 0 to columns.length) {
-      if (columnCount > 0) {
+    for (columnCount <- 1 to columns.length) {
+      if (columnCount > 1) {
         builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)
       }
       val datum = resultSet.getBytes(columnCount)

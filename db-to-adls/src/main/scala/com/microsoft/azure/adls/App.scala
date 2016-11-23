@@ -236,9 +236,9 @@ object App {
       app.generateSqlToGetPartitions(
         config.get.tables,
         config.get.partitions), { resultSet: ResultSet =>
-        PartitionMetadata(resultSet.getString(0),
-          Option(resultSet.getString(1)),
-          Option(resultSet.getString(2)))
+        PartitionMetadata(resultSet.getString(1),
+          Option(resultSet.getString(2)),
+          Option(resultSet.getString(3)))
       })
     metadataCollection.foreach(metadata =>
       logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
@@ -274,7 +274,7 @@ object App {
         config.get.username,
         config.get.password,
         app.generateSqlToGetColumnNames(metadata.tableName), { resultSet: ResultSet =>
-          resultSet.getString(0)
+          resultSet.getString(1)
         })
       uploader.bufferedUpload(s"${columnCollection.mkString("\\t")}\\n"
         .getBytes(StandardCharsets.UTF_8))
