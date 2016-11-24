@@ -174,6 +174,27 @@ class App {
       logger.info(s"\t\t\t $partition")
     })
   }
+
+  /**
+    * Helper function to execute the sql statement and return
+    * a resultset iterator
+    *
+    * @param dataTransferConfig Data Transfer configuration
+    * @param sql                SQL Statement to execution
+    * @param f                  Function to translate resultset to R
+    * @tparam R Type of the result set
+    * @return Iterator of type R
+    */
+  private def executeSql[R](dataTransferConfig: DataTransferConfig,
+                            sql: String,
+                            f: (ResultSet) => R): Iterator[R] = {
+    DBManager.sql[R](dataTransferConfig.driver,
+      dataTransferConfig.connectStringUrl,
+      dataTransferConfig.username,
+      dataTransferConfig.password,
+      sql,
+      f)
+  }
 }
 
 /**
@@ -227,18 +248,22 @@ object App {
 
     // Collect the metadata required for
     // fetching the data from the source database
-    val metadataCollection: List[PartitionMetadata] = DBManager.sql[PartitionMetadata](config.get.driver,
-      config.get.connectStringUrl,
-      config.get.username,
-      config.get.password,
-      app.generateSqlToGetPartitions(
-        config.get.tables,
-        config.get.partitions), { resultSet: ResultSet =>
-        PartitionMetadata(resultSet.getString(1),
-          Option(resultSet.getString(2)),
-          Option(resultSet.getString(3)))
-      }).flatten.toList
-    metadataCollection.foreach(metadata =>
-      logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
+    val metadataCollection: List[PartitionMetadata] = app.executeSql(config.get,
+      app.generateSqlToGetPartitions(config.get.tables, config.get.partitions), {
+        resultSet: ResultSet =>
+          PartitionMetadata(resultSet.getString(1),
+            Option(resultSet.getString(2)),
+            Option(resultSet.getString(3)))
+      }).toList
+
+    metadataCollection.foreach(metadata => {
+      // For each element in the metadata,
+      // go through the algorithm
+      logger.info(
+        s"""Table: ${metadata.tableName},
+           | Partition: ${metadata.partitionName},
+           | Sub-Partition: ${metadata.subPartitionName}
+         """.stripMargin)
+    })
   }
 }

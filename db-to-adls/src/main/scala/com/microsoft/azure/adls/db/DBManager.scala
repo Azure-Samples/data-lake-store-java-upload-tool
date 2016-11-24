@@ -31,7 +31,7 @@ object DBManager {
              username: String,
              password: String,
              sqlStatement: String,
-             f: (ResultSet) => R): Stream[R] = {
+             f: (ResultSet) => R): Iterator[R] = {
     logger.debug(s"Executing SQL Statement: $sqlStatement")
     withStatement(driver,
       connectionStringUri,
@@ -44,7 +44,7 @@ object DBManager {
 
             def next: R = f(resultSet)
           }
-      }).toStream
+      })
   }
 
   /**
