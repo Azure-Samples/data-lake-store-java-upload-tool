@@ -1,15 +1,13 @@
 package com.microsoft.azure.adls
 
-import java.nio.charset.StandardCharsets
 import java.sql.ResultSet
 
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
-import com.microsoft.azure.adls.db.{DBManager, OracleMetadata, PartitionMetadata}
-import org.slf4j.{Logger, LoggerFactory, Marker, MarkerFactory}
-
-import scala.collection.parallel.ForkJoinTaskSupport
+import com.microsoft.azure.adls.db.Oracle.OracleMetadata
+import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata}
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
   * Contains utility functions to parse command line arguments.
@@ -229,7 +227,7 @@ object App {
 
     // Collect the metadata required for
     // fetching the data from the source database
-    val metadataCollection: Seq[PartitionMetadata] = DBManager.sql[PartitionMetadata](config.get.driver,
+    val metadataCollection: List[PartitionMetadata] = DBManager.sql[PartitionMetadata](config.get.driver,
       config.get.connectStringUrl,
       config.get.username,
       config.get.password,
@@ -239,65 +237,8 @@ object App {
         PartitionMetadata(resultSet.getString(1),
           Option(resultSet.getString(2)),
           Option(resultSet.getString(3)))
-      })
+      }).flatten.toList
     metadataCollection.foreach(metadata =>
       logger.info(s"Table: ${metadata.tableName}, Partition: ${metadata.partitionName}, Sub-Partition: ${metadata.subPartitionName}"))
-
-    // Setup support for parallelism
-    val parMetadataCollection = metadataCollection.par
-    parMetadataCollection.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(config.get.desiredParallelism))
-    // Iterate through the metadata collection
-    // and go through the algorithm:
-    parMetadataCollection.foreach(metadata => {
-      val path: String = ADLSUploader.getADLSPath(config.get.destination, metadata)
-      val parentMarker: Marker = MarkerFactory.getMarker("DATA TRANSFER")
-      val childMarker: Marker = MarkerFactory.getMarker(path)
-      parentMarker.add(childMarker)
-
-      logger.info(childMarker,
-        s"""Initializing transfer of Table: ${metadata.tableName}, Partition: ${metadata.partitionName},
-           |Sub-Partition: ${metadata.subPartitionName}, Destination: $path""".stripMargin)
-
-      // 1. Initialize the uploader
-      val uploader = ADLSUploader(config.get.clientId,
-        config.get.clientKey,
-        config.get.authTokenEndpoint,
-        config.get.accountFQDN,
-        path,
-        config.get.octalPermissions,
-        config.get.desiredBufferSize * 1000 * 1000)
-
-      // 2. Get the column list
-      // 3. Upload the header string
-      val columnCollection: Seq[String] = DBManager.sql[String](config.get.driver,
-        config.get.connectStringUrl,
-        config.get.username,
-        config.get.password,
-        app.generateSqlToGetColumnNames(metadata.tableName), { resultSet: ResultSet =>
-          resultSet.getString(1)
-        })
-      uploader.bufferedUpload(s"${columnCollection mkString "\t"}\n"
-        .getBytes(StandardCharsets.UTF_8))
-
-      // 4. Fetch the data
-      // 5. Convert data to byte array
-      // 6. Upload the data to Azure Data Lake Store
-      DBManager.sql[Array[Byte]](config.get.driver,
-        config.get.connectStringUrl,
-        config.get.username,
-        config.get.password,
-        app.generateSqlToGetDataByPartition(metadata, columnCollection), { resultSet: ResultSet =>
-          DBManager.resultSetToByteArray(resultSet,
-            columnCollection,
-            "\\t",
-            "\\n")
-        }).foreach(uploader.bufferedUpload)
-
-      uploader.close()
-
-      logger.info(childMarker,
-        s"""Completed transfer of Table: ${metadata.tableName}, Partition: ${metadata.partitionName},
-           |Sub-Partition: ${metadata.subPartitionName}, Destination: $path""".stripMargin)
-    })
   }
 }

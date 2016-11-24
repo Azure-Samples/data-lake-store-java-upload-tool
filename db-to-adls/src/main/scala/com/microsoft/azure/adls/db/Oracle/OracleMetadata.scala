@@ -1,4 +1,6 @@
-package com.microsoft.azure.adls.db
+package com.microsoft.azure.adls.db.Oracle
+
+import com.microsoft.azure.adls.db.{Metadata, PartitionMetadata}
 
 /**
   * Implementation of the Metadata trait that is specific to Oracle

@@ -40,8 +40,6 @@
         <logback.version>1.1.7</logback.version>
         <sl4j.version>1.7.21</sl4j.version>
         <scopt.version>3.5.0</scopt.version>
-        <joda-time.version>2.9.6</joda-time.version>
-        <joda-convert.version>1.8.1</joda-convert.version>
         <azure-data-lake-store-sdk.version>2.0.4-SNAPSHOT</azure-data-lake-store-sdk.version>
         <oracle-jdbc.version>12.1.0.2</oracle-jdbc.version>
     </properties>

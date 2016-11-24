@@ -1,12 +1,11 @@
 package com.microsoft.azure.adls.db
 
 import java.nio.charset.StandardCharsets
-import java.sql.{Connection, DriverManager, ResultSet, SQLException, Statement}
+import java.sql.{Connection, DriverManager, ResultSet, Statement}
 
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
-
 
 /**
   * Manages the database query execution using the
@@ -40,12 +39,12 @@ object DBManager {
       password, {
         statement =>
           val resultSet = statement executeQuery sqlStatement
-          new Iterator[ResultSet] {
+          new Iterator[R] {
             def hasNext: Boolean = resultSet.next
 
-            def next: ResultSet = resultSet
-          }.map(f).toStream
-      })
+            def next: R = f(resultSet)
+          }
+      }).toStream
   }
 
   /**
