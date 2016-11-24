@@ -1,7 +1,7 @@
 package com.microsoft.azure.adls.db
 
 import java.nio.charset.StandardCharsets
-import java.sql.{Connection, DriverManager, ResultSet, Statement}
+import java.sql.{Connection, DriverManager, ResultSet, SQLException, Statement}
 
 import org.slf4j.LoggerFactory
 

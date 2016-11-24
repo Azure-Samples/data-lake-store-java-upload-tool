@@ -265,7 +265,7 @@ object App {
         config.get.accountFQDN,
         path,
         config.get.octalPermissions,
-        config.get.desiredBufferSize * 1024 * 1024)
+        config.get.desiredBufferSize * 1000 * 1000)
 
       // 2. Get the column list
       // 3. Upload the header string
@@ -276,7 +276,7 @@ object App {
         app.generateSqlToGetColumnNames(metadata.tableName), { resultSet: ResultSet =>
           resultSet.getString(1)
         })
-      uploader.bufferedUpload(s"${columnCollection.mkString("\\t")}\\n"
+      uploader.bufferedUpload(s"${columnCollection mkString "\t"}\n"
         .getBytes(StandardCharsets.UTF_8))
 
       // 4. Fetch the data
