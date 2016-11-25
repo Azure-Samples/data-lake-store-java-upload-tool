@@ -35,12 +35,16 @@ object DBManager {
     * @tparam R Type of the mapped result
     * @return Mapped result
     */
-  def withResultSetIterator[R](connectionInfo: ConnectionInfo,
-                               sqlStatement: String,
-                               f: (ResultSet) => R): Try[ResultsIterator[R]] = {
-    withResultSet[ResultsIterator[R]](connectionInfo,
+  def withResultSetIterator[T, R](connectionInfo: ConnectionInfo,
+                                  sqlStatement: String,
+                                  f: (ResultSet) => R,
+                                  g: (ResultsIterator[R]) => T): Try[T] = {
+    withResultSet[T](connectionInfo,
       sqlStatement, {
-        resultSet => new ResultsIterator[R](resultSet, f)
+        resultSet => {
+          val resultsIterator: ResultsIterator[R] = new ResultsIterator[R](resultSet, f)
+          g(resultsIterator)
+        }
       })
   }
 

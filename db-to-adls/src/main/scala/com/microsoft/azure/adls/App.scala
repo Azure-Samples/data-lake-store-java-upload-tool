@@ -5,7 +5,7 @@ import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
 import com.microsoft.azure.adls.db.DBManager.ConnectionInfo
 import com.microsoft.azure.adls.db.Oracle.OracleMetadata
-import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata, ResultsIterator}
+import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
@@ -231,20 +231,22 @@ object App {
       config.get.username,
       config.get.password)
 
-    // Collect the metadata required for
-    // fetching the data from the source database
-    val metadataCollection: Try[ResultsIterator[PartitionMetadata]] =
-    DBManager.withResultSetIterator[PartitionMetadata](
-      connectionInfo,
-      app.generateSqlToGetPartitions(config.get.tables, config.get.partitions), {
-        resultSet =>
-          PartitionMetadata(resultSet.getString(1),
-            Option(resultSet.getString(2)),
-            Option(resultSet.getString(3)))
-      })
+    // First, get the metadata information
+    val metadataCollection: Try[List[PartitionMetadata]] =
+      DBManager.withResultSetIterator[List[PartitionMetadata], PartitionMetadata](
+        connectionInfo,
+        app.generateSqlToGetPartitions(config.get.tables, config.get.partitions), {
+          resultSet =>
+            PartitionMetadata(resultSet.getString(1),
+              Option(resultSet.getString(2)),
+              Option(resultSet.getString(3)))
+        }, {
+          resultsIterator => resultsIterator.toList
+        }
+      )
 
     metadataCollection match {
-      case Success(metadata: ResultsIterator[PartitionMetadata]) => {
+      case Success(metadata: List[PartitionMetadata]) => {
         metadata.foreach(metadata => {
           // For each element in the metadata,
           // go through the algorithm
