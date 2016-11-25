@@ -1,13 +1,14 @@
 package com.microsoft.azure.adls
 
-import java.sql.ResultSet
-
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
+import com.microsoft.azure.adls.db.DBManager.ConnectionInfo
 import com.microsoft.azure.adls.db.Oracle.OracleMetadata
-import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata}
+import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata, ResultsIterator}
 import org.slf4j.{Logger, LoggerFactory}
+
+import scala.util.{Failure, Success, Try}
 
 /**
   * Contains utility functions to parse command line arguments.
@@ -174,27 +175,6 @@ class App {
       logger.info(s"\t\t\t $partition")
     })
   }
-
-  /**
-    * Helper function to execute the sql statement and return
-    * a resultset iterator
-    *
-    * @param dataTransferConfig Data Transfer configuration
-    * @param sql                SQL Statement to execution
-    * @param f                  Function to translate resultset to R
-    * @tparam R Type of the result set
-    * @return Iterator of type R
-    */
-  private def executeSql[R](dataTransferConfig: DataTransferConfig,
-                            sql: String,
-                            f: (ResultSet) => R): Iterator[R] = {
-    DBManager.sql[R](dataTransferConfig.driver,
-      dataTransferConfig.connectStringUrl,
-      dataTransferConfig.username,
-      dataTransferConfig.password,
-      sql,
-      f)
-  }
 }
 
 /**
@@ -246,24 +226,37 @@ object App {
     val logger = LoggerFactory.getLogger(classOf[App])
     app.logStartupMessage(logger, getApplicationName, config.get)
 
+    val connectionInfo: ConnectionInfo = ConnectionInfo(config.get.driver,
+      config.get.connectStringUrl,
+      config.get.username,
+      config.get.password)
+
     // Collect the metadata required for
     // fetching the data from the source database
-    val metadataCollection: List[PartitionMetadata] = app.executeSql(config.get,
+    val metadataCollection: Try[ResultsIterator[PartitionMetadata]] =
+    DBManager.withResultSetIterator[PartitionMetadata](
+      connectionInfo,
       app.generateSqlToGetPartitions(config.get.tables, config.get.partitions), {
-        resultSet: ResultSet =>
+        resultSet =>
           PartitionMetadata(resultSet.getString(1),
             Option(resultSet.getString(2)),
             Option(resultSet.getString(3)))
-      }).toList
+      })
 
-    metadataCollection.foreach(metadata => {
-      // For each element in the metadata,
-      // go through the algorithm
-      logger.info(
-        s"""Table: ${metadata.tableName},
-           | Partition: ${metadata.partitionName},
-           | Sub-Partition: ${metadata.subPartitionName}
-         """.stripMargin)
-    })
+    metadataCollection match {
+      case Success(metadata: ResultsIterator[PartitionMetadata]) => {
+        metadata.foreach(metadata => {
+          // For each element in the metadata,
+          // go through the algorithm
+          logger.info(
+            s"""Table: ${metadata.tableName},
+               | Partition: ${metadata.partitionName},
+               | Sub-Partition: ${metadata.subPartitionName}""".stripMargin)
+        })
+      }
+      case Failure(error: Throwable) => {
+        logger.error("Error gathering metadata", error)
+      }
+    }
   }
 }

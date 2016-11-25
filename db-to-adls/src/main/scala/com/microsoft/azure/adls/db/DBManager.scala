@@ -1,126 +1,117 @@
 package com.microsoft.azure.adls.db
 
-import java.nio.charset.StandardCharsets
 import java.sql.{Connection, DriverManager, ResultSet, Statement}
 
 import org.slf4j.LoggerFactory
 
-import scala.collection.mutable
+import scala.util.Try
 
 /**
   * Manages the database query execution using the
   * Loan pattern
+  *
+  * Reference: http://martinsnyder.net/blog/2013/08/07/functional-wrappers-for-legacy-apis/
   */
 object DBManager {
-  private val logger = LoggerFactory.getLogger("DBManager")
 
   /**
-    * Stream a SQL Query
+    * Connection String abstraction
     *
     * @param driver              Database driver
     * @param connectionStringUri Connection string Uri
     * @param username            Username
     * @param password            Password
-    * @param sqlStatement        SQL Statement to execute
-    * @param f                   Function to map over resultset
-    * @tparam R Type of the mapped result
-    * @return Mapped resultset
     */
-  def sql[R](driver: String,
-             connectionStringUri: String,
-             username: String,
-             password: String,
-             sqlStatement: String,
-             f: (ResultSet) => R): Iterator[R] = {
-    logger.debug(s"Executing SQL Statement: $sqlStatement")
-    withStatement(driver,
-      connectionStringUri,
-      username,
-      password, {
-        statement =>
-          val resultSet = statement executeQuery sqlStatement
-          new Iterator[R] {
-            def hasNext: Boolean = resultSet.next
+  case class ConnectionInfo(driver: String, connectionStringUri: String, username: String, password: String)
 
-            def next: R = f(resultSet)
-          }
+  private val logger = LoggerFactory.getLogger("DBManager")
+
+  /**
+    * Applies the supplied function to a managed Scala Iterator wrapping a JDBC result set
+    *
+    * @param connectionInfo Connection Information
+    * @param sqlStatement   SQL Statement to execute
+    * @param f              Function applied to result in the resultSet
+    * @tparam R Type of the mapped result
+    * @return Mapped result
+    */
+  def withResultSetIterator[R](connectionInfo: ConnectionInfo,
+                               sqlStatement: String,
+                               f: (ResultSet) => R): Try[ResultsIterator[R]] = {
+    withResultSet[ResultsIterator[R]](connectionInfo,
+      sqlStatement, {
+        resultSet => new ResultsIterator[R](resultSet, f)
       })
   }
 
   /**
-    * Convert result set to byte array
+    * Executes the SQL Statement
     *
-    * @param resultSet       Result set
-    * @param columns         A collection of columns
-    * @param columnSeparator Column separator
-    * @param rowSeparator    Row separator
-    * @return Returns a byte array
+    * @param connectionInfo Connection Information
+    * @param sqlStatement   SQL Statement to execute
+    * @param f              Function to map over resultset
+    * @tparam R Type of the mapped result
+    * @return Mapped resultset
     */
-  def resultSetToByteArray(resultSet: ResultSet,
-                           columns: Seq[String],
-                           columnSeparator: String,
-                           rowSeparator: String): Array[Byte] = {
-    var builder: mutable.ArrayBuilder[Byte] = new mutable.ArrayBuilder.ofByte
-    for (columnCount <- 1 to columns.length) {
-      if (columnCount > 1) {
-        builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)
-      }
-      val datum = resultSet.getBytes(columnCount)
-      if (datum != null)
-        builder ++= datum
-    }
-    builder ++= rowSeparator.getBytes(StandardCharsets.UTF_8)
+  def withResultSet[R](connectionInfo: ConnectionInfo,
+                       sqlStatement: String,
+                       f: (ResultSet) => R): Try[R] = {
+    logger.debug(s"Executing SQL Statement: $sqlStatement")
 
-    builder.result()
+    def g(statement: Statement) = {
+      val resultSet = statement executeQuery sqlStatement
+      try {
+        f(resultSet)
+      }
+      finally {
+        resultSet.close()
+      }
+    }
+
+    withStatement(connectionInfo, g)
   }
 
   /**
     * Loan a SQL Statement
     *
-    * @param driver              Database driver
-    * @param connectionStringUri Connection string Uri
-    * @param username            Username
-    * @param password            Password
-    * @param f                   Function that takes a statement and returns the result of type R
+    * @param connectionInfo Connection Information
+    * @param f              Function that takes a statement and returns the result of type R
     * @tparam R Type of the return value
     * @return Return value
     */
-  private def withStatement[R](driver: String,
-                               connectionStringUri: String,
-                               username: String,
-                               password: String,
-                               f: (Statement) => R): R = {
-    withConnection(
-      driver,
-      connectionStringUri,
-      username,
-      password, {
-        connection => f(connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY))
-      })
+  def withStatement[R](connectionInfo: ConnectionInfo,
+                       f: (Statement) => R): Try[R] = {
+    def g(connection: Connection) = {
+      val stmt = connection.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+      try {
+        f(stmt)
+      }
+      finally {
+        stmt.close()
+      }
+    }
+
+    withConnection(connectionInfo, g)
   }
 
   /**
     * Loan a SQL Connection
     *
-    * @param driver              Database driver
-    * @param connectionStringUri Connection string Uri
-    * @param username            Username
-    * @param password            Password
-    * @param f                   Function that takes the connection and returns the result of type R
+    * @param connectionInfo Connection Information
+    * @param f              Function that takes the connection and returns the result of type R
     * @tparam R Type of the return value
     * @return Return value
     */
-  private def withConnection[R](driver: String,
-                                connectionStringUri: String,
-                                username: String,
-                                password: String,
-                                f: (Connection) => R): R = {
-    Class.forName(driver)
-    val dbConnection: Connection = DriverManager getConnection(connectionStringUri, username, password)
-    try
-      f(dbConnection)
-    finally
-      dbConnection.close()
+  def withConnection[R](connectionInfo: ConnectionInfo,
+                        f: (Connection) => R): Try[R] = {
+    Class.forName(connectionInfo.driver)
+    val dbConnection: Connection = DriverManager getConnection(
+      connectionInfo.connectionStringUri,
+      connectionInfo.username,
+      connectionInfo.password)
+    val result = Try(f(dbConnection))
+    dbConnection.close()
+    result
   }
 }
 
