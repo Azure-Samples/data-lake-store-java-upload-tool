@@ -17,11 +17,11 @@ case class PartitionMetadata(tableName: String,
   */
 trait Metadata {
 
-  def generateSqlToGetPartitions(tables: Seq[String],
-                                 partitions: Seq[String]): String
+  def generateSqlToGetPartitions(tables: List[String],
+                                 partitions: List[String]): String
 
   def generateSqlToGetColumnNames(tableName: String): String
 
   def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata,
-                                      columns: Seq[String]): String
+                                      columns: List[String]): String
 }

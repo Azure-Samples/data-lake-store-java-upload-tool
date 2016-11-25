@@ -1,12 +1,14 @@
 package com.microsoft.azure.adls
 
+import java.nio.charset.StandardCharsets
+
 import ch.qos.logback.classic.LoggerContext
 import ch.qos.logback.classic.util.ContextInitializer
 import ch.qos.logback.core.joran.spi.JoranException
 import com.microsoft.azure.adls.db.DBManager.ConnectionInfo
 import com.microsoft.azure.adls.db.Oracle.OracleMetadata
-import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata}
-import org.slf4j.{Logger, LoggerFactory}
+import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata, Utilities}
+import org.slf4j.{Logger, LoggerFactory, Marker, MarkerFactory}
 
 import scala.util.{Failure, Success, Try}
 
@@ -235,30 +237,85 @@ object App {
     val metadataCollection: Try[List[PartitionMetadata]] =
       DBManager.withResultSetIterator[List[PartitionMetadata], PartitionMetadata](
         connectionInfo,
-        app.generateSqlToGetPartitions(config.get.tables, config.get.partitions), {
+        app.generateSqlToGetPartitions(config.get.tables.toList, config.get.partitions.toList), {
           resultSet =>
             PartitionMetadata(resultSet.getString(1),
               Option(resultSet.getString(2)),
               Option(resultSet.getString(3)))
         }, {
           resultsIterator => resultsIterator.toList
-        }
-      )
+        })
 
     metadataCollection match {
-      case Success(metadata: List[PartitionMetadata]) => {
+      case Success(metadata: List[PartitionMetadata]) =>
         metadata.foreach(metadata => {
+          // Setup logging with tracking
+          val path: String = ADLSUploader.getADLSPath(config.get.destination, metadata)
+          val parentMarker: Marker = MarkerFactory.getMarker("DATA TRANSFER")
+          val childMarker: Marker = MarkerFactory.getMarker(path)
+          parentMarker.add(childMarker)
+          logger.info(childMarker,
+            s"""Initializing transfer of table: ${metadata.tableName},
+               | Partition: ${metadata.partitionName},
+               | Sub-Partition: ${metadata.subPartitionName}""".stripMargin)
           // For each element in the metadata,
           // go through the algorithm
-          logger.info(
-            s"""Table: ${metadata.tableName},
+
+          // Step 1. Initialize the uploader
+          val uploader = ADLSUploader(config.get.clientId,
+            config.get.clientKey,
+            config.get.authTokenEndpoint,
+            config.get.accountFQDN,
+            path,
+            config.get.octalPermissions,
+            config.get.desiredBufferSize * 1000 * 1000)
+
+          // Step 2. Get the column list
+          val columnCollection: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
+            connectionInfo,
+            app.generateSqlToGetColumnNames(metadata.tableName), {
+              resultSet => resultSet.getString(1)
+            }, {
+              resultsIterator => resultsIterator.toList
+            })
+
+          columnCollection match {
+            case Success(columns: List[String]) =>
+              // Step 3. Upload the header string
+              var addTab: Boolean = false
+              val builder: StringBuilder = new StringBuilder
+              columns.foreach(s => {
+                if (addTab) {
+                  builder.append("\t")
+                } else {
+                  addTab = true
+                }
+                builder.append(s)
+              })
+              builder.append("\n")
+              uploader.bufferedUpload(builder.toString().getBytes(StandardCharsets.UTF_8))
+
+              // 4. Fetch the data
+              // 5. Convert data to byte array
+              // 6. Upload the data to Azure Data Lake Store
+              DBManager.withResultSetIterator[Unit, Array[Byte]](
+                connectionInfo,
+                app.generateSqlToGetDataByPartition(metadata, columns), {
+                  resultSet => Utilities.resultSetToByteArray(resultSet, columns, "\t", "\n")
+                }, {
+                  resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
+                })
+            case Failure(error: Throwable) =>
+              logger.error(s"Error gathering column metadata information for table ${metadata.tableName}", error)
+          }
+
+          logger.info(childMarker,
+            s"""Completed transfer of table: ${metadata.tableName},
                | Partition: ${metadata.partitionName},
                | Sub-Partition: ${metadata.subPartitionName}""".stripMargin)
         })
-      }
-      case Failure(error: Throwable) => {
+      case Failure(error: Throwable) =>
         logger.error("Error gathering metadata", error)
-      }
     }
   }
 }

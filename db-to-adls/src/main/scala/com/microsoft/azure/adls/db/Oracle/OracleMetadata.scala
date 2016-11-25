@@ -13,8 +13,8 @@ trait OracleMetadata extends Metadata {
     * @param partitions List of partitions
     * @return SQL Statement
     */
-  override def generateSqlToGetPartitions(tables: Seq[String],
-                                          partitions: Seq[String]): String = {
+  override def generateSqlToGetPartitions(tables: List[String],
+                                          partitions: List[String]): String = {
     val builder: StringBuilder = new StringBuilder
     builder ++=
       s"""SELECT T.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
@@ -50,7 +50,7 @@ trait OracleMetadata extends Metadata {
     * @param columns           List of columns to fetch
     * @return SQL Statement to fetch the data
     */
-  override def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata, columns: Seq[String]): String = {
+  override def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata, columns: List[String]): String = {
     partitionMetadata.subPartitionName match {
       case Some(subPartition) =>
         s"SELECT ${columns mkString ","} FROM ${partitionMetadata.tableName} SUBPARTITION($subPartition)"
