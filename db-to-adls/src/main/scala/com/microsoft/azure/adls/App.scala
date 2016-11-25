@@ -10,6 +10,8 @@ import com.microsoft.azure.adls.db.Oracle.OracleMetadata
 import com.microsoft.azure.adls.db.{DBManager, PartitionMetadata, Utilities}
 import org.slf4j.{Logger, LoggerFactory, Marker, MarkerFactory}
 
+import scala.collection.parallel.ForkJoinTaskSupport
+import scala.collection.parallel.immutable.ParSeq
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -247,8 +249,11 @@ object App {
         })
 
     metadataCollection match {
-      case Success(metadata: List[PartitionMetadata]) =>
-        metadata.foreach(metadata => {
+      case Success(linearMetadataCollection: List[PartitionMetadata]) =>
+        val parallelMetadataCollection: ParSeq[PartitionMetadata] = linearMetadataCollection.par
+        parallelMetadataCollection.tasksupport = new ForkJoinTaskSupport(
+          new scala.concurrent.forkjoin.ForkJoinPool(config.get.desiredParallelism))
+        parallelMetadataCollection.foreach(metadata => {
           // Setup logging with tracking
           val path: String = ADLSUploader.getADLSPath(config.get.destination, metadata)
           val parentMarker: Marker = MarkerFactory.getMarker("DATA TRANSFER")
@@ -308,6 +313,8 @@ object App {
             case Failure(error: Throwable) =>
               logger.error(s"Error gathering column metadata information for table ${metadata.tableName}", error)
           }
+
+          uploader.close()
 
           logger.info(childMarker,
             s"""Completed transfer of table: ${metadata.tableName},
