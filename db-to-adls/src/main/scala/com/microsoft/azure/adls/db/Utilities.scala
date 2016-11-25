@@ -24,9 +24,9 @@ object Utilities {
       if (columnCount > 1) {
         builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)
       }
-      val datum = resultSet.getBytes(columnCount)
+      val datum = resultSet.getString(columnCount)
       if (datum != null)
-        builder ++= datum
+        builder ++= datum.getBytes(StandardCharsets.UTF_8)
     }
     builder ++= rowSeparator.getBytes(StandardCharsets.UTF_8)
 
