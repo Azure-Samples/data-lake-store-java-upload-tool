@@ -56,6 +56,8 @@ Usage: db-to-adls-0.1-jar-with-dependencies.jar [options]
                            Please provide table names that need to be transferred.
   --partitions partition1,partition2...
                            Specific partitions that need to be transferred. Can be used for incremental transfer or in combination with reprocess flag
+  --subpartitions subpartition1,subpartition2...
+                           Specific sub-partitions that need to be transferred. Can be used for incremental transfer or in combination with reprocess flag
 ```
 ##Example command lines
 

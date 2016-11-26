@@ -18,7 +18,8 @@ case class PartitionMetadata(tableName: String,
 trait Metadata {
 
   def generateSqlToGetPartitions(tables: List[String],
-                                 partitions: List[String]): String
+                                 partitions: List[String],
+                                 subPartitions: List[String]): String
 
   def generateSqlToGetColumnNames(tableName: String): String
 

@@ -1,10 +1,8 @@
 package com.microsoft.azure.adls
 
-import java.io.OutputStream
-
 import com.microsoft.azure.adls.db.PartitionMetadata
 import com.microsoft.azure.datalake.store.oauth2.{AzureADAuthenticator, AzureADToken}
-import com.microsoft.azure.datalake.store.{ADLStoreClient, IfExists}
+import com.microsoft.azure.datalake.store.{ADLFileOutputStream, ADLStoreClient, IfExists}
 
 import scala.collection.mutable
 
@@ -20,10 +18,11 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
                    path: String,
                    octalPermissions: String,
                    desiredBufferSizeInBytes: Int) extends AutoCloseable {
-  private lazy val stream: OutputStream = adlStoreClient.createFile(path,
+  private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(path,
     IfExists.OVERWRITE,
     octalPermissions,
     true)
+  stream.setBufferSize(desiredBufferSizeInBytes)
   private var currentBufferSize: Int = 0
   private var bufferBuilder = new mutable.ArrayBuilder.ofByte()
 
