@@ -110,6 +110,11 @@ class App {
         .valueName("partition1,partition2...")
         .action((x, c) => c.copy(partitions = x))
         .text("Specific partitions that need to be transferred. Can be used for incremental transfer or in combination with reprocess flag")
+      opt[Seq[String]]("subpartitions")
+        .optional()
+        .valueName("subpartition1,subpartition2...")
+        .action((x, c) => c.copy(subPartitions = x))
+        .text("Specific sub-partitions that need to be transferred. Can be used for incremental transfer or in combination with reprocess flag")
     }
 
     // Evaluate
@@ -178,6 +183,10 @@ class App {
     config.partitions.foreach((partition) => {
       logger.info(s"\t\t\t $partition")
     })
+    logger.info(s"\t Sub-partitions:")
+    config.subPartitions.foreach((subPartition) => {
+      logger.info(s"\t\t\t $subPartition")
+    })
   }
 }
 
@@ -202,7 +211,8 @@ object App {
                                  username: String = null,
                                  password: String = null,
                                  tables: Seq[String] = Seq(),
-                                 partitions: Seq[String] = Seq())
+                                 partitions: Seq[String] = Seq(),
+                                 subPartitions: Seq[String] = Seq())
 
   private def getApplicationName: String = new java.io.File(classOf[App]
     .getProtectionDomain
@@ -239,7 +249,9 @@ object App {
     val metadataCollection: Try[List[PartitionMetadata]] =
       DBManager.withResultSetIterator[List[PartitionMetadata], PartitionMetadata](
         connectionInfo,
-        app.generateSqlToGetPartitions(config.get.tables.toList, config.get.partitions.toList), {
+        app.generateSqlToGetPartitions(config.get.tables.toList,
+          config.get.partitions.toList,
+          config.get.subPartitions.toList), {
           resultSet =>
             PartitionMetadata(resultSet.getString(1),
               Option(resultSet.getString(2)),

@@ -9,12 +9,14 @@ trait OracleMetadata extends Metadata {
   /**
     * SQL Statement to generate the list of available partitions
     *
-    * @param tables     List of tables
-    * @param partitions List of partitions
+    * @param tables        List of tables
+    * @param partitions    List of partitions
+    * @param subPartitions List of sub-partitions
     * @return SQL Statement
     */
   override def generateSqlToGetPartitions(tables: List[String],
-                                          partitions: List[String]): String = {
+                                          partitions: List[String],
+                                          subPartitions: List[String]): String = {
     val builder: StringBuilder = new StringBuilder
     builder ++=
       s"""SELECT T.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
@@ -27,6 +29,9 @@ trait OracleMetadata extends Metadata {
        """.stripMargin
     if (partitions.nonEmpty) {
       builder ++= s" AND P.PARTITION_NAME IN (${partitions map (partition => s"'$partition'") mkString ", "})"
+    }
+    if (subPartitions.nonEmpty) {
+      builder ++= s" AND SP.SUBPARTITION_NAME IN (${subPartitions map (subPartition => s"'$subPartition'") mkString ", "})"
     }
 
     builder.toString()
