@@ -63,6 +63,7 @@ object DBManager {
     logger.debug(s"Executing SQL Statement: $sqlStatement")
 
     def g(statement: Statement) = {
+      statement.setFetchSize(10000)
       val resultSet = statement executeQuery sqlStatement
       try {
         f(resultSet)
