@@ -299,18 +299,8 @@ object App {
           columnCollection match {
             case Success(columns: List[String]) =>
               // Step 3. Upload the header string
-              var addTab: Boolean = false
-              val builder: StringBuilder = new StringBuilder
-              columns.foreach(s => {
-                if (addTab) {
-                  builder.append("\t")
-                } else {
-                  addTab = true
-                }
-                builder.append(s)
-              })
-              builder.append("\n")
-              uploader.bufferedUpload(builder.toString().getBytes(StandardCharsets.UTF_8))
+              uploader.bufferedUpload(
+                s"""${columns mkString "\t"}\n""".getBytes(StandardCharsets.UTF_8))
 
               // 4. Fetch the data
               // 5. Convert data to byte array
