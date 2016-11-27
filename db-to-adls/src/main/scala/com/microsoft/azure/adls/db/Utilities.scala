@@ -19,7 +19,7 @@ object Utilities {
                            columns: Seq[String],
                            columnSeparator: String,
                            rowSeparator: String): Array[Byte] = {
-    var builder: mutable.ArrayBuilder[Byte] = new mutable.ArrayBuilder.ofByte
+    var builder: mutable.ArrayBuilder[Byte] = mutable.ArrayBuilder.make[Byte]
     for (columnCount <- 1 to columns.length) {
       if (columnCount > 1) {
         builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)

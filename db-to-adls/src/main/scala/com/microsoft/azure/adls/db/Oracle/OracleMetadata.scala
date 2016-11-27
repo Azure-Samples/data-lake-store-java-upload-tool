@@ -28,10 +28,18 @@ trait OracleMetadata extends Metadata {
          | WHERE T.TABLE_NAME IN (${tables map (table => s"'$table'") mkString ", "})
        """.stripMargin
     if (partitions.nonEmpty) {
-      builder ++= s" AND P.PARTITION_NAME IN (${partitions map (partition => s"'$partition'") mkString ", "})"
+      builder ++= " AND( "
+      builder ++= partitions.foldLeft(new StringBuilder) {
+        (sb, s) => sb append s"OR P.PARTITION_NAME LIKE %$s% "
+      }.delete(0, 3).toString
+      builder ++= ")"
     }
     if (subPartitions.nonEmpty) {
-      builder ++= s" AND SP.SUBPARTITION_NAME IN (${subPartitions map (subPartition => s"'$subPartition'") mkString ", "})"
+      builder ++= " AND( "
+      builder ++= partitions.foldLeft(new StringBuilder) {
+        (sb, s) => sb append s"OR SP.SUBPARTITION_NAME LIKE %$s% "
+      }.delete(0, 3).toString
+      builder ++= ")"
     }
 
     builder.toString()
