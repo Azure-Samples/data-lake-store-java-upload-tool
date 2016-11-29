@@ -31,16 +31,19 @@ object DBManager {
     *
     * @param connectionInfo Connection Information
     * @param sqlStatement   SQL Statement to execute
+    * @param fetchSize      Rowset fetch size
     * @param f              Function applied to result in the resultSet
     * @tparam R Type of the mapped result
     * @return Mapped result
     */
   def withResultSetIterator[T, R](connectionInfo: ConnectionInfo,
                                   sqlStatement: String,
+                                  fetchSize: Int,
                                   f: (ResultSet) => R,
                                   g: (ResultsIterator[R]) => T): Try[T] = {
     withResultSet[T](connectionInfo,
-      sqlStatement, {
+      sqlStatement,
+      fetchSize, {
         resultSet => {
           val resultsIterator: ResultsIterator[R] = new ResultsIterator[R](resultSet, f)
           g(resultsIterator)
@@ -53,17 +56,19 @@ object DBManager {
     *
     * @param connectionInfo Connection Information
     * @param sqlStatement   SQL Statement to execute
+    * @param fetchSize      Rowset fetch size
     * @param f              Function to map over resultset
     * @tparam R Type of the mapped result
     * @return Mapped resultset
     */
   def withResultSet[R](connectionInfo: ConnectionInfo,
                        sqlStatement: String,
+                       fetchSize: Int,
                        f: (ResultSet) => R): Try[R] = {
     logger.debug(s"Executing SQL Statement: $sqlStatement")
 
     def g(statement: Statement) = {
-      statement.setFetchSize(10000)
+      statement.setFetchSize(fetchSize)
       val resultSet = statement executeQuery sqlStatement
       try {
         f(resultSet)

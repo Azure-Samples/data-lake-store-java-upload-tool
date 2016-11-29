@@ -73,9 +73,18 @@ class App {
           if (x > 0)
             c.copy(desiredBufferSize = x)
           else
-            c.copy(desiredBufferSize = 256 * 1024 * 1024) // 256 MB by default
+            c.copy(desiredBufferSize = 8 * 1024 * 1024) // 256 MB by default
         }
         .text("Desired buffer size in megabytes.ADLS,by default, streams 4MB at a time. This will impact your available network bandwidth.")
+      opt[Int]("fetchSize")
+        .required()
+        .action { (x, c) =>
+          if (x > 0)
+            c.copy(fetchSize = x)
+          else
+            c.copy(fetchSize = 2000) // 2000 rows by default
+        }
+        .text("Fetch size in row count. Oracle, for example, sends only 10 rows by default. This will impact your database throughput.")
       opt[String]("logFilePath")
         .required()
         .action { (x, c) => c.copy(logFilePath = x) }
@@ -133,7 +142,9 @@ class App {
     * @param logFile Log file
     */
   private def reInitializeLogger(logPath: String,
-                                 logFile: String): Unit = {
+                                 logFile: String): Unit
+
+  = {
     // Reset the logger context
     System.setProperty("log_path", logPath)
     System.setProperty("log_file", logFile)
@@ -160,7 +171,9 @@ class App {
     */
   private def logStartupMessage(logger: Logger,
                                 applicationName: String,
-                                config: DataTransferConfig): Unit = {
+                                config: DataTransferConfig): Unit
+
+  = {
     logger.info(s"$applicationName starting with command line arguments: ")
     logger.info(s"\t Client id: ${config.clientId}")
     logger.info(s"\t Client key: ${config.clientKey}")
@@ -170,6 +183,7 @@ class App {
     logger.info(s"\t Octal permissions: ${config.octalPermissions}")
     logger.info(s"\t Desired parallelism: ${config.desiredParallelism}")
     logger.info(s"\t Desired buffer size: ${config.desiredBufferSize}MB")
+    logger.info(s"\t Fetch siz: ${config.fetchSize} rows")
     logger.info(s"\t Log file path: ${config.logFilePath}")
     logger.info(s"\t Re-process triggered: ${config.reprocess}")
     logger.info(s"\t JDBC Driver: ${config.driver}")
@@ -204,6 +218,7 @@ object App {
                                  octalPermissions: String = null,
                                  desiredParallelism: Int = 0,
                                  desiredBufferSize: Int = 0,
+                                 fetchSize: Int = 0,
                                  logFilePath: String = null,
                                  reprocess: Boolean = false,
                                  driver: String = null,
@@ -251,7 +266,8 @@ object App {
         connectionInfo,
         app.generateSqlToGetPartitions(config.get.tables.toList,
           config.get.partitions.toList,
-          config.get.subPartitions.toList), {
+          config.get.subPartitions.toList),
+        config.get.fetchSize, {
           resultSet =>
             PartitionMetadata(resultSet.getString(1),
               Option(resultSet.getString(2)),
@@ -290,7 +306,8 @@ object App {
           // Step 2. Get the column list
           val columnCollection: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
             connectionInfo,
-            app.generateSqlToGetColumnNames(metadata.tableName), {
+            app.generateSqlToGetColumnNames(metadata.tableName),
+            config.get.fetchSize, {
               resultSet => resultSet.getString(1)
             }, {
               resultsIterator => resultsIterator.toList
@@ -307,7 +324,8 @@ object App {
               // 6. Upload the data to Azure Data Lake Store
               DBManager.withResultSetIterator[Unit, Array[Byte]](
                 connectionInfo,
-                app.generateSqlToGetDataByPartition(metadata, columns), {
+                app.generateSqlToGetDataByPartition(metadata, columns),
+                config.get.fetchSize, {
                   resultSet => Utilities.resultSetToByteArray(resultSet, columns, "\t", "\n")
                 }, {
                   resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
