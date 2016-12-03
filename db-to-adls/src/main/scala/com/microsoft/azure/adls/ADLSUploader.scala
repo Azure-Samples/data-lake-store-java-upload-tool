@@ -25,6 +25,7 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
   stream.setBufferSize(desiredBufferSizeInBytes)
   private var currentBufferSize: Int = 0
   private var bufferBuilder = new mutable.ArrayBuilder.ofByte()
+  bufferBuilder.sizeHint(desiredBufferSizeInBytes)
 
   /**
     * Buffers the data until it reaches the threshold

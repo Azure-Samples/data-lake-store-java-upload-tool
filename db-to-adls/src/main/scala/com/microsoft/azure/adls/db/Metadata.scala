@@ -1,5 +1,7 @@
 package com.microsoft.azure.adls.db
 
+import scala.collection.mutable
+
 /**
   * Container of the metadata information
   *
@@ -16,6 +18,7 @@ case class PartitionMetadata(tableName: String,
   * for a database backend.
   */
 trait Metadata {
+  final val ParallelismHintTag = "PARALLELISM"
 
   def generateSqlToGetPartitions(tables: List[String],
                                  partitions: List[String],
@@ -24,5 +27,6 @@ trait Metadata {
   def generateSqlToGetColumnNames(tableName: String): String
 
   def generateSqlToGetDataByPartition(partitionMetadata: PartitionMetadata,
-                                      columns: List[String]): String
+                                      columns: List[String],
+                                      hints: mutable.Map[String, AnyVal]): String
 }

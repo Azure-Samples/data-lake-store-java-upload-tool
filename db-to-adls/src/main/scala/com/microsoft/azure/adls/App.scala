@@ -324,9 +324,15 @@ object App {
               // 4. Fetch the data
               // 5. Convert data to byte array
               // 6. Upload the data to Azure Data Lake Store
+              var hints = scala.collection.mutable.Map[String, AnyVal]()
+              if (metadata.partitionName.isEmpty) {
+                hints += (app.ParallelismHintTag -> config.get.desiredParallelism)
+              }
               DBManager.withResultSetIterator[Unit, Array[Byte]](
                 connectionInfo,
-                app.generateSqlToGetDataByPartition(metadata, columns),
+                app.generateSqlToGetDataByPartition(metadata,
+                  columns,
+                  hints),
                 config.get.fetchSize, {
                   resultSet =>
                     Utilities.resultSetToByteArray(resultSet,
