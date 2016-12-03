@@ -11,24 +11,24 @@ object Utilities {
     *
     * @param resultSet       Result set
     * @param columns         A collection of columns
-    * @param columnSeparator Column separator
-    * @param rowSeparator    Row separator
+    * @param columnDelimiter Column separator
+    * @param rowDelimiter    Row separator
     * @return Returns a byte array
     */
   def resultSetToByteArray(resultSet: ResultSet,
                            columns: Seq[String],
-                           columnSeparator: String,
-                           rowSeparator: String): Array[Byte] = {
+                           columnDelimiter: Char,
+                           rowDelimiter: Char): Array[Byte] = {
     var builder: mutable.ArrayBuilder[Byte] = mutable.ArrayBuilder.make[Byte]
     for (columnCount <- 1 to columns.length) {
       if (columnCount > 1) {
-        builder ++= columnSeparator.getBytes(StandardCharsets.UTF_8)
+        builder += columnDelimiter.toByte
       }
       val datum = resultSet.getString(columnCount)
       if (datum != null)
         builder ++= datum.getBytes(StandardCharsets.UTF_8)
     }
-    builder ++= rowSeparator.getBytes(StandardCharsets.UTF_8)
+    builder += rowDelimiter.toByte
 
     builder.result()
   }

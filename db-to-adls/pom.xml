@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.microsoft.azure.adls</groupId>
     <artifactId>db-to-adls</artifactId>
-    <version>0.1</version>
+    <version>0.2</version>
     <name>${project.artifactId}</name>
     <description>Transfers data from a local data to Azure Data Lake</description>
     <inceptionYear>2016</inceptionYear>

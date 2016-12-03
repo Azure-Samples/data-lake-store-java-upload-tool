@@ -85,6 +85,10 @@ class App {
             c.copy(fetchSize = 2000) // 2000 rows by default
         }
         .text("Fetch size in row count. Oracle, for example, sends only 10 rows by default. This will impact your database throughput.")
+      opt[String]("columnDelimiter")
+        .optional()
+        .action((x, c) => c.copy(columnDelimiter = x.charAt(0)))
+        .text("Column delimiter. The default value is tab")
       opt[String]("logFilePath")
         .required()
         .action { (x, c) => c.copy(logFilePath = x) }
@@ -142,9 +146,7 @@ class App {
     * @param logFile Log file
     */
   private def reInitializeLogger(logPath: String,
-                                 logFile: String): Unit
-
-  = {
+                                 logFile: String): Unit = {
     // Reset the logger context
     System.setProperty("log_path", logPath)
     System.setProperty("log_file", logFile)
@@ -171,9 +173,7 @@ class App {
     */
   private def logStartupMessage(logger: Logger,
                                 applicationName: String,
-                                config: DataTransferConfig): Unit
-
-  = {
+                                config: DataTransferConfig): Unit = {
     logger.info(s"$applicationName starting with command line arguments: ")
     logger.info(s"\t Client id: ${config.clientId}")
     logger.info(s"\t Client key: ${config.clientKey}")
@@ -184,6 +184,7 @@ class App {
     logger.info(s"\t Desired parallelism: ${config.desiredParallelism}")
     logger.info(s"\t Desired buffer size: ${config.desiredBufferSize}MB")
     logger.info(s"\t Fetch siz: ${config.fetchSize} rows")
+    logger.info(s"\t Column Delimiter: ${config.columnDelimiter}")
     logger.info(s"\t Log file path: ${config.logFilePath}")
     logger.info(s"\t Re-process triggered: ${config.reprocess}")
     logger.info(s"\t JDBC Driver: ${config.driver}")
@@ -219,6 +220,7 @@ object App {
                                  desiredParallelism: Int = 0,
                                  desiredBufferSize: Int = 0,
                                  fetchSize: Int = 0,
+                                 columnDelimiter: Char = '\t',
                                  logFilePath: String = null,
                                  reprocess: Boolean = false,
                                  driver: String = null,
@@ -326,7 +328,11 @@ object App {
                 connectionInfo,
                 app.generateSqlToGetDataByPartition(metadata, columns),
                 config.get.fetchSize, {
-                  resultSet => Utilities.resultSetToByteArray(resultSet, columns, "\t", "\n")
+                  resultSet =>
+                    Utilities.resultSetToByteArray(resultSet,
+                      columns,
+                      config.get.columnDelimiter,
+                      '\n')
                 }, {
                   resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
                 })
