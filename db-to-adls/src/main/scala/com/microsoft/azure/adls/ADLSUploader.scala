@@ -1,10 +1,15 @@
 package com.microsoft.azure.adls
 
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{ExecutorService, Executors, LinkedBlockingQueue, TimeUnit}
+
 import com.microsoft.azure.adls.db.PartitionMetadata
 import com.microsoft.azure.datalake.store.oauth2.{AzureADAuthenticator, AzureADToken}
 import com.microsoft.azure.datalake.store.{ADLFileOutputStream, ADLStoreClient, IfExists}
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
+import scala.util.{Failure, Success, Try}
 
 /**
   * Manages uploads of files to the Azure Data Lake Store.
@@ -18,14 +23,35 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
                    path: String,
                    octalPermissions: String,
                    desiredBufferSizeInBytes: Int) extends AutoCloseable {
+  private lazy val logger: Logger = LoggerFactory.getLogger(classOf[ADLSUploader])
   private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(path,
     IfExists.OVERWRITE,
     octalPermissions,
     true)
-  stream.setBufferSize(desiredBufferSizeInBytes)
+  private val queue: LinkedBlockingQueue[Array[Byte]] = new LinkedBlockingQueue[Array[Byte]]()
+  private val executorService: ExecutorService = Executors.newSingleThreadExecutor()
+  private val shouldContinueUploading: AtomicBoolean = new AtomicBoolean(true)
   private var currentBufferSize: Int = 0
   private var bufferBuilder = new mutable.ArrayBuilder.ofByte()
+
+  stream.setBufferSize(desiredBufferSizeInBytes)
   bufferBuilder.sizeHint(desiredBufferSizeInBytes)
+
+  // Blocking thread to process the upload queue
+  executorService.execute(new Runnable {
+    override def run(): Unit = {
+      var terminate: Boolean = false
+      while (shouldContinueUploading.get() && !terminate) {
+        Option(queue.poll(1, TimeUnit.SECONDS)) match {
+          case Some(Array.emptyByteArray) =>
+            terminate = true
+          case (Some(data)) =>
+            upload(data)
+          case None => // Nothing to do
+        }
+      }
+    }
+  })
 
   /**
     * Buffers the data until it reaches the threshold
@@ -33,11 +59,14 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
     * @param data Byte buffer to write to the stream
     */
   def bufferedUpload(data: Array[Byte]): Unit = {
+    if (!shouldContinueUploading.get()) {
+      throw new Exception("There was an exception uploading to Azure. Please check your logs.")
+    }
     if ((currentBufferSize + data.length) >= desiredBufferSizeInBytes) {
       bufferBuilder ++= data
       currentBufferSize += data.length
     } else {
-      upload(bufferBuilder.result())
+      queue.put(mkByteArray(bufferBuilder))
       bufferBuilder.clear()
       bufferBuilder ++= data
       currentBufferSize = data.length
@@ -45,14 +74,41 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
   }
 
   /**
+    * Always make a copy ArrayBuilder.result does not guarantee that data will be
+    * copied to new buffer. This is critical since we are uploading
+    * in a Future asynchronously
+    *
+    * @param arrayBuilder Source Array Builder
+    * @return Copy of the elements in the builder
+    */
+  private def mkByteArray(arrayBuilder: mutable.ArrayBuilder[Byte]): Array[Byte] = {
+    val result = arrayBuilder.result()
+    val datum = new Array[Byte](result.length)
+    result.copyToArray(datum)
+    datum
+  }
+
+  /**
     * AutoCloseable to ensure resources are released appropriately
     */
   override def close(): Unit = {
-    upload(bufferBuilder.result())
+    queue.put(mkByteArray(bufferBuilder))
+    queue.put(Array.emptyByteArray)
 
+    // Shutdown the stream
     if (stream != null) {
       stream.flush()
       stream.close()
+    }
+
+    // Wait for uploader thread to complete
+    if (shouldContinueUploading.get()) {
+      logger.info("Waiting for uploader threads to complete")
+      executorService.shutdown()
+      Try(executorService.awaitTermination(Long.MaxValue, TimeUnit.NANOSECONDS))
+    } else {
+      logger.info("There was a failure during upload. Shutting down abruptly")
+      executorService.shutdownNow()
     }
   }
 
@@ -62,10 +118,15 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
     * @param data Byte buffer to write to the stream
     */
   private def upload(data: Array[Byte]) = {
-    stream.write(data)
+    val result = Try(stream.write(data))
+    result match {
+      case Success(_: Unit) =>
+        shouldContinueUploading.set(true)
+      case Failure(error: Throwable) =>
+        shouldContinueUploading.set(false)
+        logger.error(s"Error uploading byte array to Azure Data Lake: $path", error)
+    }
   }
-
-
 }
 
 /**

@@ -44,6 +44,14 @@ trait OracleMetadata extends Metadata {
       builder ++= ")"
     }
 
+    builder ++=
+      s"""
+         | UNION ALL
+         | SELECT V.VIEW_NAME, NULL AS PARTITION_NAME, NULL AS SUBPARTITION_NAME FROM
+         | ALL_VIEWS V WHERE V.VIEW_NAME IN
+         | (${tables map (table => s"'${table.toUpperCase}'") mkString ", "})
+       """.stripMargin
+
     builder.toString()
   }
 
@@ -75,13 +83,13 @@ trait OracleMetadata extends Metadata {
       case None =>
         partitionMetadata.partitionName match {
           case Some(partition) =>
-            s"SELECT ${columns mkString ","} FROM ${partitionMetadata.tableName} SUBPARTITION($partition)"
+            s"SELECT ${columns mkString ","} FROM ${partitionMetadata.tableName} PARTITION($partition)"
           case None =>
             val parallelTag: StringBuilder = new StringBuilder
             if (hints.contains(ParallelismHintTag)) {
               parallelTag.append("/* PARALLEL(")
               parallelTag.append(partitionMetadata.tableName)
-              parallelTag.append(s" ${hints get ParallelismHintTag}")
+              parallelTag.append(s" ${hints(ParallelismHintTag)}")
               parallelTag.append(") */")
             }
             s"""SELECT

@@ -304,49 +304,51 @@ object App {
             path,
             config.get.octalPermissions,
             config.get.desiredBufferSize * 1000 * 1000)
+          try {
+            // Step 2. Get the column list
+            val columnCollection: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
+              connectionInfo,
+              app.generateSqlToGetColumnNames(metadata.tableName),
+              config.get.fetchSize, {
+                resultSet => resultSet.getString(1)
+              }, {
+                resultsIterator => resultsIterator.toList
+              })
 
-          // Step 2. Get the column list
-          val columnCollection: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
-            connectionInfo,
-            app.generateSqlToGetColumnNames(metadata.tableName),
-            config.get.fetchSize, {
-              resultSet => resultSet.getString(1)
-            }, {
-              resultsIterator => resultsIterator.toList
-            })
+            columnCollection match {
+              case Success(columns: List[String]) =>
+                // Step 3. Upload the header string
+                uploader.bufferedUpload(
+                  s"""${columns mkString "\t"}\n""".getBytes(StandardCharsets.UTF_8))
 
-          columnCollection match {
-            case Success(columns: List[String]) =>
-              // Step 3. Upload the header string
-              uploader.bufferedUpload(
-                s"""${columns mkString "\t"}\n""".getBytes(StandardCharsets.UTF_8))
-
-              // 4. Fetch the data
-              // 5. Convert data to byte array
-              // 6. Upload the data to Azure Data Lake Store
-              var hints = scala.collection.mutable.Map[String, AnyVal]()
-              if (metadata.partitionName.isEmpty) {
-                hints += (app.ParallelismHintTag -> config.get.desiredParallelism)
-              }
-              DBManager.withResultSetIterator[Unit, Array[Byte]](
-                connectionInfo,
-                app.generateSqlToGetDataByPartition(metadata,
-                  columns,
-                  hints),
-                config.get.fetchSize, {
-                  resultSet =>
-                    Utilities.resultSetToByteArray(resultSet,
-                      columns,
-                      config.get.columnDelimiter,
-                      '\n')
-                }, {
-                  resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
-                })
-            case Failure(error: Throwable) =>
-              logger.error(s"Error gathering column metadata information for table ${metadata.tableName}", error)
+                // 4. Fetch the data
+                // 5. Convert data to byte array
+                // 6. Upload the data to Azure Data Lake Store
+                var hints = scala.collection.mutable.Map[String, AnyVal]()
+                if (metadata.partitionName.isEmpty) {
+                  logger.info(s"Adding parallelism hint with desired parallelism: ${config.get.desiredParallelism}")
+                  hints += (app.ParallelismHintTag -> config.get.desiredParallelism)
+                }
+                DBManager.withResultSetIterator[Unit, Array[Byte]](
+                  connectionInfo,
+                  app.generateSqlToGetDataByPartition(metadata,
+                    columns,
+                    hints),
+                  config.get.fetchSize, {
+                    resultSet =>
+                      Utilities.resultSetToByteArray(resultSet,
+                        columns,
+                        config.get.columnDelimiter,
+                        '\n')
+                  }, {
+                    resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
+                  })
+              case Failure(error: Throwable) =>
+                logger.error(s"Error gathering column metadata information for table ${metadata.tableName}", error)
+            }
+          } finally {
+            uploader.close()
           }
-
-          uploader.close()
 
           logger.info(childMarker,
             s"""Completed transfer of table: ${metadata.tableName},
