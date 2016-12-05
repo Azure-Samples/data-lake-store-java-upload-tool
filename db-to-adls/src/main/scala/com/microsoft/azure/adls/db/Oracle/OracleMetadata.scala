@@ -21,13 +21,14 @@ trait OracleMetadata extends Metadata {
                                           subPartitions: List[String]): String = {
     val builder: StringBuilder = new StringBuilder
     builder ++=
-      s"""SELECT T.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
+      s"""SELECT CONCAT(CONCAT(T.OWNER, '.'), T.TABLE_NAME) AS TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
          | ALL_TABLES T
          | LEFT OUTER JOIN ALL_TAB_PARTITIONS P ON
          | T.TABLE_NAME = P.TABLE_NAME
          | LEFT OUTER JOIN ALL_TAB_SUBPARTITIONS SP ON
          | P.TABLE_NAME = SP.TABLE_NAME and P.PARTITION_NAME = SP.PARTITION_NAME
-         | WHERE T.TABLE_NAME IN (${tables map (table => s"'${table.toUpperCase}'") mkString ", "})
+         | WHERE T.TABLE_NAME IN
+         | (${tables map (table => s"'${table.substring(table.indexOf(".") + 1).toUpperCase}'") mkString ", "})
        """.stripMargin
     if (partitions.nonEmpty) {
       builder ++= " AND( "
@@ -47,9 +48,9 @@ trait OracleMetadata extends Metadata {
     builder ++=
       s"""
          | UNION ALL
-         | SELECT V.VIEW_NAME, NULL AS PARTITION_NAME, NULL AS SUBPARTITION_NAME FROM
+         | SELECT CONCAT(CONCAT(V.OWNER, '.'), V.VIEW_NAME) AS TABLE_NAME, NULL AS PARTITION_NAME, NULL AS SUBPARTITION_NAME FROM
          | ALL_VIEWS V WHERE V.VIEW_NAME IN
-         | (${tables map (table => s"'${table.toUpperCase}'") mkString ", "})
+         | (${tables map (table => s"'${table.substring(table.indexOf(".") + 1).toUpperCase}'") mkString ", "})
        """.stripMargin
 
     builder.toString()
@@ -62,7 +63,15 @@ trait OracleMetadata extends Metadata {
     * @return SQL Statement
     */
   override def generateSqlToGetColumnNames(tableName: String): String = {
-    s"SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = '$tableName' ORDER BY COLUMN_NAME"
+    val builder: StringBuilder = new StringBuilder
+    builder ++=
+      s"""SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE
+         | TABLE_NAME ='${tableName.substring(tableName.indexOf(".") + 1).toUpperCase}'
+       """.stripMargin
+    if (tableName.contains("."))
+      builder ++= s" AND OWNER = '${tableName.substring(0, tableName.indexOf(".")).toUpperCase}'"
+    builder ++= " ORDER BY COLUMN_NAME"
+    builder.toString()
   }
 
   /**

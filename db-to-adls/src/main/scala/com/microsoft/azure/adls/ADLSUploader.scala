@@ -95,12 +95,6 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
     queue.put(mkByteArray(bufferBuilder))
     queue.put(Array.emptyByteArray)
 
-    // Shutdown the stream
-    if (stream != null) {
-      stream.flush()
-      stream.close()
-    }
-
     // Wait for uploader thread to complete
     if (shouldContinueUploading.get()) {
       logger.info("Waiting for uploader threads to complete")
@@ -109,6 +103,11 @@ class ADLSUploader(adlStoreClient: ADLStoreClient,
     } else {
       logger.info("There was a failure during upload. Shutting down abruptly")
       executorService.shutdownNow()
+    }
+    // Shutdown the stream
+    if (stream != null) {
+      stream.flush()
+      stream.close()
     }
   }
 
@@ -145,10 +144,12 @@ object ADLSUploader {
   private def getAzureADToken(clientId: String,
                               clientKey: String,
                               authenticationTokenEndpoint: String): AzureADToken = {
-    AzureADAuthenticator.getTokenUsingClientCreds(
+    val token: AzureADToken = AzureADAuthenticator.getTokenUsingClientCreds(
       authenticationTokenEndpoint,
       clientId,
       clientKey)
+    token
+    //    AzureADAuthenticator.getTokenUsingRefreshToken(clientId, token.accessToken)
   }
 
   /**
