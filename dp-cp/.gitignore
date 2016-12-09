@@ -29,4 +29,6 @@ project/plugins/project/
 .idea/
 project/project/
 project/target/
-src/
+/src/main/resources/FACTS.uploader
+/src/main/resources/DIMENSION.uploader
+logs/
