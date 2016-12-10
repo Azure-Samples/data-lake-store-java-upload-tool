@@ -2,6 +2,7 @@ package com.starbucks.analytics.db
 
 import java.sql.{ Connection, DriverManager, ResultSet, Statement }
 
+import com.starbucks.analytics.adls.DBConnectionInfo
 import org.slf4j.LoggerFactory
 
 import scala.util.Try
@@ -13,22 +14,6 @@ import scala.util.Try
  * Reference: http://martinsnyder.net/blog/2013/08/07/functional-wrappers-for-legacy-apis/
  */
 object DBManager {
-
-  /**
-   * Connection String abstraction
-   *
-   * @param driver              Database driver
-   * @param connectionStringUri Connection string Uri
-   * @param username            Username
-   * @param password            Password
-   */
-  case class DBConnectionInfo(
-    driver:              String,
-    connectionStringUri: String,
-    username:            String,
-    password:            String
-  )
-
   private val logger = LoggerFactory.getLogger("DBManager")
 
   /**

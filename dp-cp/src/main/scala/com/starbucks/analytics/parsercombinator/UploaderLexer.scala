@@ -12,6 +12,12 @@ object UploaderLexer extends RegexParsers {
   // Ignore any whitespace character
   override def skipWhitespace = true
 
+  def apply(reader: Reader) = {
+    parse(reader) match {
+      case NoSuccess(msg, next)  => Left(UploaderLexerError(Location(next.pos.line, next.pos.column), msg))
+      case Success(result, next) => Right(result)
+    }
+  }
   /**
    * Parsers the input stream and presents the results
    * of lexing the content in the stream
