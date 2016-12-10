@@ -3,6 +3,7 @@ import sbt._
 object Dependencies {
   // Compile scope:
   // Scope available in all classpath, transitive by default.
+  lazy val scala_parser_combinators = "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
   lazy val slf4j_api = "org.slf4j" % "slf4j-api" % "1.7.21"
   lazy val logback = "ch.qos.logback" % "logback-classic" % "1.1.7"
   lazy val scopt = "com.github.scopt" %% "scopt" % "3.5.0"

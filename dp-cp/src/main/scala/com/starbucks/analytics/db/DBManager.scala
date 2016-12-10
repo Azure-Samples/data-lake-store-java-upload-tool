@@ -22,7 +22,12 @@ object DBManager {
    * @param username            Username
    * @param password            Password
    */
-  case class ConnectionInfo(driver: String, connectionStringUri: String, username: String, password: String)
+  case class DBConnectionInfo(
+    driver:              String,
+    connectionStringUri: String,
+    username:            String,
+    password:            String
+  )
 
   private val logger = LoggerFactory.getLogger("DBManager")
 
@@ -37,7 +42,7 @@ object DBManager {
    * @return Mapped result
    */
   def withResultSetIterator[T, R](
-    connectionInfo: ConnectionInfo,
+    connectionInfo: DBConnectionInfo,
     sqlStatement:   String,
     fetchSize:      Int,
     f:              (ResultSet) => R,
@@ -67,7 +72,7 @@ object DBManager {
    * @return Mapped resultset
    */
   def withResultSet[R](
-    connectionInfo: ConnectionInfo,
+    connectionInfo: DBConnectionInfo,
     sqlStatement:   String,
     fetchSize:      Int,
     f:              (ResultSet) => R
@@ -96,7 +101,7 @@ object DBManager {
    * @return Return value
    */
   def withStatement[R](
-    connectionInfo: ConnectionInfo,
+    connectionInfo: DBConnectionInfo,
     f:              (Statement) => R
   ): Try[R] = {
     def g(connection: Connection) = {
@@ -120,7 +125,7 @@ object DBManager {
    * @return Return value
    */
   def withConnection[R](
-    connectionInfo: ConnectionInfo,
+    connectionInfo: DBConnectionInfo,
     f:              (Connection) => R
   ): Try[R] = {
     Class.forName(connectionInfo.driver)

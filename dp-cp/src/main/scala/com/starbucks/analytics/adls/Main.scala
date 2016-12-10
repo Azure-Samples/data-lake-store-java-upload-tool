@@ -1,8 +1,9 @@
 package com.starbucks.analytics.adls
 
-import java.io.File
+import java.io.{File, FileReader}
 
-import org.slf4j.{ Logger, LoggerFactory }
+import com.starbucks.analytics.parsercombinator.UploaderLexer
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
  * Entry point for the application
@@ -21,6 +22,15 @@ object Main extends App {
   }
 
   logStartupMessage(rootLogger, getApplicationName, config.get)
+
+  // Lex
+  val reader = new FileReader(config.get.file)
+  val lexResult = UploaderLexer.parse(reader)
+  rootLogger.debug(
+    s"""Lexical result of parsing ${config.get.file.getAbsolutePath}:
+       |\t\t ${lexResult}
+     """.stripMargin
+  )
 
   // Configuration object
   case class Config(file: File = new File("."))
