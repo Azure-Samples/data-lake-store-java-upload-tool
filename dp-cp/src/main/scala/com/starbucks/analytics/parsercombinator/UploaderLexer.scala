@@ -5,7 +5,8 @@ import java.io.Reader
 import scala.util.parsing.combinator.RegexParsers
 
 /**
- * Character parser using regular expressions to parse the input
+ * Responsible for lexical analysis of the internal DSL
+ * used for uploading
  */
 object UploaderLexer extends RegexParsers {
   // Ignore any whitespace character

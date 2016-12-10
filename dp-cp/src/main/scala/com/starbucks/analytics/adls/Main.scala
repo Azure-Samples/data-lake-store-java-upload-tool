@@ -28,7 +28,7 @@ object Main extends App {
   val lexResult = UploaderLexer.parse(reader)
   rootLogger.debug(
     s"""Lexical result of parsing ${config.get.file.getAbsolutePath}:
-       |\t\t ${lexResult}
+       |\t\t $lexResult
      """.stripMargin
   )
 
