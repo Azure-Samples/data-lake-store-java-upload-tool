@@ -4,8 +4,10 @@ import java.io.Reader
 
 import com.starbucks.analytics.UploaderOptionsInfo
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.DBConnectionInfo
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
+import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
 
+import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
 
 /**
@@ -188,12 +190,12 @@ object Parser extends RegexParsers {
   private def setup: Parser[(DBConnectionInfo, ADLSConnectionInfo)] = {
     withToken ~> username ~ password ~ driver ~ source ~
       clientId ~ authTokenEndPoint ~ clientKey ~ target ^^ {
-        case u ~ p ~ d ~ s ~ c ~ a ~ k ~ t => {
+        case u ~ p ~ d ~ s ~ c ~ a ~ k ~ t =>
           val dbConnectionInfo = DBConnectionInfo(
-            d._2.str,
-            s._2.str,
-            u._2.str,
-            p._2.str
+            driver = d._2.str,
+            connectionStringUri = s._2.str,
+            username = u._2.str,
+            password = p._2.str
           )
           val adlsConnectionInfo = ADLSConnectionInfo(
             c._2.str,
@@ -202,7 +204,6 @@ object Parser extends RegexParsers {
             t._2.str
           )
           (dbConnectionInfo, adlsConnectionInfo)
-        }
       }
   }
 
@@ -216,7 +217,7 @@ object Parser extends RegexParsers {
   private def select = {
     selectToken ~> owner ~ table ~ opt(partition) ~
       opt(subPartition) ~ opt(predicate) ^^ {
-        case o ~ t ~ p ~ s ~ pr => {
+        case o ~ t ~ p ~ s ~ pr =>
           val partitionList: Option[List[String]] = {
             if (p.isDefined)
               Some(p.get._2.str.split(",").toList)
@@ -237,7 +238,6 @@ object Parser extends RegexParsers {
             subPartitionList,
             pr
           )
-        }
       }
   }
 
@@ -254,21 +254,22 @@ object Parser extends RegexParsers {
   private def options: Parser[UploaderOptionsInfo] = {
     optionsToken ~> desiredBufferSize ~
       desiredParallelism ~ fetchSize ~ separator ^^ {
-        case b ~ p ~ f ~ s => {
+        case b ~ p ~ f ~ s =>
           UploaderOptionsInfo(
             b._2.str.toInt * 1024 * 1024,
             p._2.str.toInt,
             f._2.str.toInt,
             s._2.str.charAt(0)
           )
-        }
       }
   }
 
   // Combinator that brings it all together
   private def block = {
     declarations ~ setup ~ select ~ targetPath ~ options ^^ {
-      case d ~ s ~ sl ~ t ~ o => {
+      case d ~ s ~ sl ~ t ~ o =>
+        var sqlStatements: List[Option[String]] = List[Option[String]]()
+
         // setup the declarations
         var declarationMap: Map[String, Token] = Map[String, Token]()
         if (d.isDefined)
@@ -276,11 +277,53 @@ object Parser extends RegexParsers {
 
         // setup information
         val dbConnectionInfo = s._1
-        val adlsConnectionInfp = s._2
+        val adlsConnectionInfo = s._2
 
-        // get the target path and make the necessary substitutions
-        val targetPath = new StringBuilder("s"
-      }
+        //TODO: Use the USING Token to dynamically inject SQL Provider
+        // generate the schema information
+        val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
+          dbConnectionInfo,
+          OracleSqlGenerator.getPartitions(
+            sl._1,
+            sl._2,
+            sl._3,
+            sl._4
+          ),
+          o.fetchSize, {
+            resultSet =>
+              SchemaInfo(
+                resultSet.getString(1),
+                resultSet.getString(2),
+                Option(resultSet.getString(3)),
+                Option(resultSet.getString(4))
+              )
+          }, {
+            resultsIterator => resultsIterator.toList
+          }
+        )
+        if (schemaList.isSuccess) {
+          sqlStatements = schemaList.get.map(schema => {
+            val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
+              dbConnectionInfo,
+              OracleSqlGenerator.getColumnNames(
+                schema.owner,
+                schema.tableName
+              ),
+              o.fetchSize, {
+                resultSet => resultSet.getString(1)
+              }, {
+                resultSetIterator => resultSetIterator.toList
+              }
+            )
+            if (columnList.isSuccess) {
+              Some(OracleSqlGenerator.getData(schema, columnList.get))
+            } else {
+              None
+            }
+          })
+        }
+
+        (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
   }
 }

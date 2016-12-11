@@ -8,7 +8,6 @@ object Dependencies {
   lazy val logback = "ch.qos.logback" % "logback-classic" % "1.1.7"
   lazy val scopt = "com.github.scopt" %% "scopt" % "3.5.0"
   lazy val azure_data_lake_store_sdk = "com.microsoft.azure" % "azure-data-lake-store-sdk" % "2.0.4-SNAPSHOT"
-
   // Provided scope:
   // Scope provided by container, available only in compile and test classpath, non-transitive by default.
 

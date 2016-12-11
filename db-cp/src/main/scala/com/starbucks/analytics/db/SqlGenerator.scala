@@ -10,8 +10,8 @@ trait SqlGenerator {
   def getPartitions(
     owner:         String,
     tables:        List[String],
-    partitions:    List[String],
-    subPartitions: List[String]
+    partitions:    Option[List[String]],
+    subPartitions: Option[List[String]]
   ): String
 
   // Generates a sql statement to fetch the column names
@@ -24,7 +24,7 @@ trait SqlGenerator {
   // Generates a sql statement to fetch data given
   // the metadata information
   def getData(
-    partitionMetadata: String,
-    columns:           List[String]
+    schemaInfo: SchemaInfo,
+    columns:    List[String]
   ): String
 }

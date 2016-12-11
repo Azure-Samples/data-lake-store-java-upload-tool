@@ -28,10 +28,11 @@ libraryDependencies in ThisBuild ++= Seq(
 
 
 resolvers in ThisBuild ++= Seq(
-
   "snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
   "releases" at "https://oss.sonatype.org/content/repositories/releases"
 )
+
+unmanagedJars in Compile += file("lib/ojdbc7.jar")
 
 SbtScalariform.scalariformSettings
 
