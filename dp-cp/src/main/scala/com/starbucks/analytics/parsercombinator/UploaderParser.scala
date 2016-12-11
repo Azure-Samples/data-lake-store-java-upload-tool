@@ -1,7 +1,7 @@
 package com.starbucks.analytics.parsercombinator
 
 import scala.util.parsing.combinator.Parsers
-import scala.util.parsing.input.{NoPosition, Position, Reader}
+import scala.util.parsing.input.{ NoPosition, Position, Reader }
 
 /**
  * Responsible for syntactic analysis of the lexical analysis
@@ -12,13 +12,13 @@ import scala.util.parsing.input.{NoPosition, Position, Reader}
 object UploaderParser extends Parsers {
   override type Elem = UploaderToken
 
-  def apply(tokens: Seq[UploaderToken]): Either[UploaderParserError, UploaderAST] = {
-    val reader = new UploaderTokenReader(tokens)
-//    program(reader) match {
-//      case NoSuccess(msg, next)  => Left(UploaderParserError(Location(next.pos.line, next.pos.column), msg))
-//      case Success(result, next) => Right(result)
-//    }
-  }
+  //  def apply(tokens: Seq[UploaderToken]): Either[UploaderParserError, UploaderAST] = {
+  //    val reader = new UploaderTokenReader(tokens)
+  //        program(reader) match {
+  //          case NoSuccess(msg, next)  => Left(UploaderParserError(Location(next.pos.line, next.pos.column), msg))
+  //          case Success(result, next) => Right(result)
+  //        }
+  //  }
 
   /**
    * Used by the parser to read from the sequence of UploaderToken.
