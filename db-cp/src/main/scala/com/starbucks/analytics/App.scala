@@ -2,8 +2,12 @@ package com.starbucks.analytics
 
 import java.io.{ File, FileReader }
 
+import com.starbucks.analytics.adls.ADLSUploader
+import com.starbucks.analytics.db.{ DBManager, Utilities }
 import com.starbucks.analytics.parsercombinator.Parser
 import org.slf4j.{ Logger, LoggerFactory }
+
+import scala.collection.parallel.{ ForkJoinTaskSupport, ParMap, ParSeq }
 
 /**
  * Represents the configuration required for the application
@@ -33,12 +37,62 @@ object App extends App {
   /*                              MAGIC HAPPENS HERE                                     */
   /***************************************************************************************/
   val reader = new FileReader(config.get.file)
-  val lexResult = Parser.parse(reader)
+  val parserResult = Parser.parse(reader)
   rootLogger.debug(
     s"""Lexical result of parsing ${config.get.file.getAbsolutePath}:
-       |\t\t $lexResult
+       |\t\t $parserResult
        """.stripMargin
   )
+  /***************************************************************************************/
+  /*                      USING PARSER RESULT UPLOAD TO AZURE                            */
+  /***************************************************************************************/
+  if (parserResult.isRight) {
+    val dbConnectionInfo = parserResult.right.get._1
+    val adlsConnectionInfo = parserResult.right.get._2
+    val uploaderOptionsInfo = parserResult.right.get._3
+    val sqlFileMap = parserResult.right.get._4
+    val parallelSqlFileMap: ParMap[Option[(String, List[String])], Option[String]] = sqlFileMap.par
+    parallelSqlFileMap.tasksupport = new ForkJoinTaskSupport(
+      new scala.concurrent.forkjoin.ForkJoinPool(uploaderOptionsInfo.desiredParallelism)
+    )
+    parallelSqlFileMap.foreach(sqlFile => {
+      if (sqlFile._1.isDefined) {
+        rootLogger.info(
+          s"""Initializing transfer of SQL: ${sqlFile._1.get},
+           | to: ${sqlFile._2.get}""".stripMargin
+        )
+        // Step 1. Initialize the uploader
+        val uploader = ADLSUploader(
+          adlsConnectionInfo.clientId,
+          adlsConnectionInfo.clientKey,
+          adlsConnectionInfo.authenticationTokenEndpoint,
+          adlsConnectionInfo.accountFQDN,
+          sqlFile._2.get,
+          "755",
+          uploaderOptionsInfo.desiredBufferSize
+        )
+        try {
+          DBManager.withResultSetIterator[Unit, Array[Byte]](
+            dbConnectionInfo,
+            sqlFile._1.get._1,
+            uploaderOptionsInfo.fetchSize, {
+            resultSet =>
+              Utilities.resultSetToByteArray(
+                resultSet,
+                sqlFile._1.get._2,
+                uploaderOptionsInfo.separator,
+                '\n'
+              )
+          }, {
+            resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
+          }
+          )
+        } finally {
+          uploader.close()
+        }
+      }
+    })
+  }
   /***************************************************************************************/
 
   // Utility function to return the application name

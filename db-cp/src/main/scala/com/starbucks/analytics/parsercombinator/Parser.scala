@@ -22,8 +22,17 @@ object Parser extends RegexParsers {
    * @param reader Input reader
    * @return Result of lexing
    */
-  def parse(reader: Reader) = {
-    parseAll(block, reader)
+  def parse(reader: Reader): Either[UploaderParserError, (DBConnectionInfo, ADLSConnectionInfo, UploaderOptionsInfo, Map[Option[(String, List[String])], Option[String]])] = {
+    val parsed = parseAll(block, reader)
+    parsed match {
+      case NoSuccess(msg, next) => Left(
+        UploaderParserError(
+          Location(next.pos.line, next.pos.column),
+          msg
+        )
+      )
+      case Success(result, _) => Right(result)
+    }
   }
 
   // Combinators for lexing the language
@@ -243,7 +252,7 @@ object Parser extends RegexParsers {
 
   // combinators for parsing target tokens
   private def targetPath: Parser[Token] = {
-    uploadToken ~> (interpolationToken | identifierToken) ^^ (x => x)
+    uploadToken ~> (variableToken | literalToken) ^^ (x => x)
   }
 
   // combinators for parsing options token
@@ -268,7 +277,8 @@ object Parser extends RegexParsers {
   private def block = {
     declarations ~ setup ~ select ~ targetPath ~ options ^^ {
       case d ~ s ~ sl ~ t ~ o =>
-        var sqlStatements: List[Option[String]] = List[Option[String]]()
+        var sqlStatements: Map[Option[(String, List[String])], Option[String]] =
+          Map[Option[(String, List[String])], Option[String]]()
 
         // setup the declarations
         var declarationMap: Map[String, Token] = Map[String, Token]()
@@ -316,11 +326,25 @@ object Parser extends RegexParsers {
               }
             )
             if (columnList.isSuccess) {
-              Some(OracleSqlGenerator.getData(schema, columnList.get))
+              Some((
+                OracleSqlGenerator.getData(schema, columnList.get),
+                columnList.get
+              )) ->
+                Some({
+                  val builder = new StringBuilder
+                  builder ++= "/dev/data/"
+                  builder ++= schema.tableName
+                  if (schema.partitionName.isDefined)
+                    builder ++= s"/${schema.partitionName.get}"
+                  if (schema.subPartitionName.isDefined)
+                    builder ++= s"/${schema.subPartitionName.get}"
+                  builder ++= ".csv"
+                  builder.toString
+                })
             } else {
-              None
+              None -> None
             }
-          })
+          }).toMap
         }
 
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
