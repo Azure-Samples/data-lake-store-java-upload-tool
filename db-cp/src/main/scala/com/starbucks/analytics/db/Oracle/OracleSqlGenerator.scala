@@ -1,6 +1,6 @@
 package com.starbucks.analytics.db.Oracle
 
-import com.starbucks.analytics.db.{ SchemaInfo, SqlGenerator }
+import com.starbucks.analytics.db.{SchemaInfo, SqlGenerator}
 
 /**
  * Implementation of the sql generator trait for Oracle
@@ -18,9 +18,9 @@ object OracleSqlGenerator extends SqlGenerator {
       s"""SELECT T.OWNER, T.TABLE_NAME, P.PARTITION_NAME, SP.SUBPARTITION_NAME FROM
          | ALL_TABLES T
          | LEFT OUTER JOIN ALL_TAB_PARTITIONS P ON
-         | T.TABLE_NAME = P.TABLE_NAME
+         | T.TABLE_NAME = P.TABLE_NAME AND T.OWNER = P.TABLE_OWNER
          | LEFT OUTER JOIN ALL_TAB_SUBPARTITIONS SP ON
-         | P.TABLE_NAME = SP.TABLE_NAME and P.PARTITION_NAME = SP.PARTITION_NAME
+         | P.TABLE_NAME = SP.TABLE_NAME and P.PARTITION_NAME = SP.PARTITION_NAME AND AND P.TABLE_OWNER = SP.TABLE_OWNER
          | WHERE T.OWNER = '${owner.toUpperCase}' AND
          | T.TABLE_NAME IN
          | (${tables map (table => s"'${table.toUpperCase}'") mkString ", "})

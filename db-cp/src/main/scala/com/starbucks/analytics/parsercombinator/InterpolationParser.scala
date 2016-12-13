@@ -69,6 +69,8 @@ object InterpolationParser extends RegexParsers {
               case unknown =>
                 throw new Exception(s"The variable $v is defined but don't know how to parse $unknown.")
             }
+          } else {
+            throw new Exception(s"The variable $v is not defined.")
           }
         case token @ unknown =>
           throw new Exception(s"Evaluating interpolation of $token encountered an object $unknown.")
