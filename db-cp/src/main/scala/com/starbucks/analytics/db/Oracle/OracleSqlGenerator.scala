@@ -63,7 +63,7 @@ object OracleSqlGenerator extends SqlGenerator {
       s"""SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE
          | OWNER = '${owner.toUpperCase}' AND
          | TABLE_NAME ='${tableName.toUpperCase}'
-         | ORDER BY COLUMN_NAME
+         | ORDER BY COLUMN_ID
        """.stripMargin
     builder.toString()
   }
@@ -71,7 +71,8 @@ object OracleSqlGenerator extends SqlGenerator {
   // Generates a sql statement to fetch data given
   override def getData(
     schemaInfo: SchemaInfo,
-    columns:    List[String]
+    columns:    List[String],
+    predicate:  Option[String]
   ): String = {
     schemaInfo.subPartitionName match {
       case Some(sp) =>
@@ -89,10 +90,19 @@ object OracleSqlGenerator extends SqlGenerator {
                | PARTITION($p)
          """.stripMargin
           case None =>
-            s"""
-               |SELECT ${columns mkString ","}
-               | FROM ${schemaInfo.owner}.${schemaInfo.tableName}
+            predicate match {
+              case Some(pr) =>
+                s"""
+                   |SELECT ${columns mkString ","}
+                   | FROM ${schemaInfo.owner}.${schemaInfo.tableName}
+                   | WHERE $pr
              """.stripMargin
+              case None =>
+                s"""
+                   |SELECT ${columns mkString ","}
+                   | FROM ${schemaInfo.owner}.${schemaInfo.tableName}
+             """.stripMargin
+            }
         }
     }
   }

@@ -7,6 +7,7 @@ import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
 
+import scala.collection.mutable
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
 
@@ -176,12 +177,12 @@ object Parser extends RegexParsers {
       }
   }
 
-  def declarations: Parser[Option[Map[String, Token]]] = {
+  def declarations: Parser[Option[mutable.Map[String, Token]]] = {
     opt(rep1(declaration)) ^^ { decl =>
       {
-        if (decl.isDefined)
-          Some(decl.get.map(x => x._1 -> x._2).toMap)
-        else
+        if (decl.isDefined) {
+          Some(mutable.Map(decl.get.map(x => (x._1, x._2)): _*))
+        } else
           None
       }
     }
@@ -189,7 +190,7 @@ object Parser extends RegexParsers {
 
   // combinators for parsing setup tokens
   private def username = usernameToken ~ literalToken
-  private def password = passwordToken ~ literalToken
+  private def password = passwordToken ~ (literalToken | variableToken)
   private def driver = driverToken ~ literalToken
   private def source = sourceToken ~ literalToken
   private def clientId = clientIdToken ~ literalToken
@@ -204,7 +205,15 @@ object Parser extends RegexParsers {
             driver = d._2.str,
             connectionStringUri = s._2.str,
             username = u._2.str,
-            password = p._2.str
+            password = {
+            p._2 match {
+              case LITERAL(literal) =>
+                literal
+              case _ =>
+                // TODO: Add support for variables
+                ""
+            }
+          }
           )
           val adlsConnectionInfo = ADLSConnectionInfo(
             c._2.str,
@@ -281,7 +290,7 @@ object Parser extends RegexParsers {
           Map[Option[(String, List[String])], Option[String]]()
 
         // setup the declarations
-        var declarationMap: Map[String, Token] = Map[String, Token]()
+        var declarationMap: mutable.Map[String, Token] = mutable.Map[String, Token]()
         if (d.isDefined)
           declarationMap = d.get
 
@@ -313,6 +322,16 @@ object Parser extends RegexParsers {
         )
         if (schemaList.isSuccess) {
           sqlStatements = schemaList.get.map(schema => {
+            // Add system variables to the symbol/declaration map
+            declarationMap("OWNER") = LITERAL(schema.owner)
+            declarationMap("TABLE") = LITERAL(schema.tableName)
+            declarationMap("PARTITION") = {
+              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
+            }
+            declarationMap("SUBPARTITION") = {
+              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get) else EMPTY()
+            }
+
             val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
               dbConnectionInfo,
               OracleSqlGenerator.getColumnNames(
@@ -327,26 +346,37 @@ object Parser extends RegexParsers {
             )
             if (columnList.isSuccess) {
               Some((
-                OracleSqlGenerator.getData(schema, columnList.get),
+                OracleSqlGenerator.getData(schema, columnList.get, None),
                 columnList.get
               )) ->
                 Some({
-                  val builder = new StringBuilder
-                  builder ++= "/dev/data/"
-                  builder ++= schema.tableName
-                  if (schema.partitionName.isDefined)
-                    builder ++= s"/${schema.partitionName.get}"
-                  if (schema.subPartitionName.isDefined)
-                    builder ++= s"/${schema.subPartitionName.get}"
-                  builder ++= ".csv"
-                  builder.toString
+                  t match {
+                    case LITERAL(str) =>
+                      str
+                    case VARIABLE(str) =>
+                      if (declarationMap.contains(str)) {
+                        declarationMap(str) match {
+                          case INTERPOLATION(i) =>
+                            val result = InterpolationParser.parse(i, declarationMap)
+                            if (result.isRight)
+                              result.right.get
+                            else
+                              "" // Should not happen
+                          case unknown =>
+                            throw new Exception(s"The variable $str is defined but don't know how to parse $unknown.")
+                        }
+                      } else {
+                        throw new Exception(s"The variable $str is not declared.")
+                      }
+                    case _ =>
+                      throw new Exception(s"Unrecognized token $t")
+                  }
                 })
             } else {
               None -> None
             }
           }).toMap
         }
-
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
   }

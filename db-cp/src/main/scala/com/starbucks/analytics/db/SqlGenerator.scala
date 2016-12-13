@@ -25,6 +25,7 @@ trait SqlGenerator {
   // the metadata information
   def getData(
     schemaInfo: SchemaInfo,
-    columns:    List[String]
+    columns:    List[String],
+    predicate:  Option[String]
   ): String
 }

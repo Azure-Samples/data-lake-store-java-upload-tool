@@ -7,6 +7,7 @@ import scala.util.parsing.input.Positional
  */
 sealed trait Token extends Positional
 
+case class EMPTY() extends Token
 case class LITERAL(str: String) extends Token
 case class IDENTIFIER(str: String) extends Token
 case class VARIABLE(str: String) extends Token

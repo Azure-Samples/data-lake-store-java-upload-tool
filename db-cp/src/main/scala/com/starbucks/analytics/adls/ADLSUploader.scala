@@ -48,7 +48,7 @@ class ADLSUploader(
     override def run(): Unit = {
       var terminate: Boolean = false
       while (shouldContinueUploading.get() && !terminate) {
-        Option(queue.poll(1, TimeUnit.SECONDS)) match {
+        Option(queue.poll(200, TimeUnit.MILLISECONDS)) match {
           case Some(Array.emptyByteArray) =>
             terminate = true
           case (Some(data)) =>
