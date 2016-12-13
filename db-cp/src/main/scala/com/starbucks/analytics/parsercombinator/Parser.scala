@@ -300,32 +300,32 @@ object Parser extends RegexParsers {
         // get predicate from the Select.
         val pred = sl._5.get
         // build the predicate buffer for select statement.
-        val predBuffer:StringBuilder = new StringBuilder
+        val predBuffer: StringBuilder = new StringBuilder
         predBuffer ++= s"${pred._1._1._1._1._2.str}="
-        if(pred._2.isDefined) predBuffer ++= "'"
+        if (pred._2.isDefined) predBuffer ++= "'"
 
         var predicateResultList = List[String]()
-          if(declarationMap.contains(sl._5.get._1._2.str)) {
-            predicateResultList = declarationMap(sl._5.get._1._2.str) match {
-              case SQL(i) => {
-                val predicateList = DBManager.withResultSetIterator[List[String], String](
-                  dbConnectionInfo,
-                  i,
-                  o.fetchSize, {
-                    result => result.getString(1)
-                  }, {
-                    resultSetIterator => resultSetIterator.toList
-                  })
-                predicateList.get
-              }
-              case _ => throw new Exception("Unknown predicate found.")
+        if (declarationMap.contains(sl._5.get._1._2.str)) {
+          predicateResultList = declarationMap(sl._5.get._1._2.str) match {
+            case SQL(i) => {
+              val predicateList = DBManager.withResultSetIterator[List[String], String](
+                dbConnectionInfo,
+                i,
+                o.fetchSize, {
+                result => result.getString(1)
+              }, {
+                resultSetIterator => resultSetIterator.toList
+              })
+              predicateList.get
             }
+            case _ => throw new Exception("Unknown predicate found.")
+          }
         }
 
         //TODO: Use the USING Token to dynamically inject SQL Provider
         // generate the schema information
-        if(!predicateResultList.isEmpty) {
-          for(predResult <- predicateResultList){
+        if (!predicateResultList.isEmpty) {
+          for (predResult <- predicateResultList) {
             val predicateInUse = {
               if (predBuffer.endsWith("'"))
                 s"${predBuffer.toString}${predResult.toString}'"
@@ -381,7 +381,7 @@ object Parser extends RegexParsers {
                   Some((
                     OracleSqlGenerator.getData(schema, columnList.get, Some(predicateInUse)),
                     columnList.get
-                    )) ->
+                  )) ->
                     Some({
                       t match {
                         case LITERAL(str) =>
@@ -411,7 +411,7 @@ object Parser extends RegexParsers {
               }).toMap
             }
           }
-      }
+        }
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
   }
