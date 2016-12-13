@@ -297,7 +297,7 @@ object Parser extends RegexParsers {
         val dbConnectionInfo = s._1
         val adlsConnectionInfo = s._2
 
-        // predicate changes.
+        // get predicate from the Select.
         val pred = sl._5.get
         // build the predicate buffer for select statement.
         val predBuffer:StringBuilder = new StringBuilder
@@ -320,22 +320,18 @@ object Parser extends RegexParsers {
               }
               case _ => throw new Exception("Unknown predicate found.")
             }
-
         }
-        println(predicateResultList.length)
 
         //TODO: Use the USING Token to dynamically inject SQL Provider
         // generate the schema information
         if(!predicateResultList.isEmpty) {
           for(predResult <- predicateResultList){
             val predicateInUse = {
-              if (predBuffer.endsWith("'")) {
+              if (predBuffer.endsWith("'"))
                 s"${predBuffer.toString}${predResult.toString}'"
-              } else {
+              else
                 s"${predBuffer.toString}${predResult.toString}"
-              }
             }
-            println(predicateInUse)
             val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
               dbConnectionInfo,
               OracleSqlGenerator.getPartitions(
@@ -359,6 +355,7 @@ object Parser extends RegexParsers {
             if (schemaList.isSuccess) {
               sqlStatements = schemaList.get.map(schema => {
                 // Add system variables to the symbol/declaration map
+                declarationMap("PREDICATE") = LITERAL(predResult)
                 declarationMap("OWNER") = LITERAL(schema.owner)
                 declarationMap("TABLE") = LITERAL(schema.tableName)
                 declarationMap("PARTITION") = {

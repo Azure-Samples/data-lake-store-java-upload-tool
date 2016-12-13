@@ -26,26 +26,23 @@ object App extends App {
 
   // Parse the command line arguments
   // Exit if there is a problem parsing the command line arguments
-//  val config = parse(args)
-//  if (config.isEmpty) {
-//    System.exit(-1)
-//  }
+  val config = parse(args)
+  if (config.isEmpty) {
+    System.exit(-1)
+  }
 
-//  logStartupMessage(rootLogger, getApplicationName, config.get)
+  logStartupMessage(rootLogger, getApplicationName, config.get)
 
   /***************************************************************************************/
   /*                              MAGIC HAPPENS HERE                                     */
   /***************************************************************************************/
-//  val reader = new FileReader(config.get.file)
-  val reader = new FileReader(new File("C:\\Users\\depatel\\Documents\\Starbucks\\Best Practices\\DIMENSIONS.sql"))
+  val reader = new FileReader(config.get.file)
   val parserResult = Parser.parse(reader)
   rootLogger.debug(
-//    s"""Lexical result of parsing ${config.get.file.getAbsolutePath}:
-    s"""Lexical result of parsing:
+    s"""Lexical result of parsing ${config.get.file.getAbsolutePath}:
        |\t\t $parserResult
        """.stripMargin
   )
-  System.exit(0)
   /***************************************************************************************/
   /*                      USING PARSER RESULT UPLOAD TO AZURE                            */
   /***************************************************************************************/
