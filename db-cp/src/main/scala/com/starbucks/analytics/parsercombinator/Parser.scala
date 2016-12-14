@@ -5,7 +5,7 @@ import java.io.Reader
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
+import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -17,8 +17,17 @@ import scala.util.parsing.combinator.RegexParsers
  * used for uploading
  */
 object Parser extends RegexParsers {
+  // Produces a cross product of two traversable
+  // collections
   implicit class Crossable[X](xs: Traversable[X]) {
-    def cross[Y](ys: Traversable[Y]) = for { x <- xs; y <- ys } yield (x, y)
+    def cross[Y](ys: Traversable[Y]): Traversable[(X, Option[Y])] = xs.flatMap(lhs => {
+      if (ys.isEmpty)
+        Seq((lhs, None))
+      else
+        ys.map(rhs => {
+          (lhs, Some(rhs))
+        })
+    })
   }
 
   /**
@@ -320,7 +329,8 @@ object Parser extends RegexParsers {
                 result => result.getString(1)
               }, {
                 resultSetIterator => resultSetIterator.toList
-              })
+              }
+              )
               predicateList.get
             }
             case _ => throw new Exception("Unknown predicate found.")
@@ -359,7 +369,12 @@ object Parser extends RegexParsers {
             // Add system variables to the symbol/declaration map
             declarationMap("OWNER") = LITERAL(schema.owner)
             declarationMap("TABLE") = LITERAL(schema.tableName)
-            declarationMap("PREDICATE") = LITERAL(pred)
+            declarationMap("PREDICATE") = pred match {
+              case Some(s) =>
+                LITERAL(s)
+              case None =>
+                EMPTY()
+            }
             declarationMap("PARTITION") = {
               if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
             }
@@ -381,7 +396,7 @@ object Parser extends RegexParsers {
             )
             if (columnList.isSuccess) {
               Some((
-                OracleSqlGenerator.getData(schema, columnList.get, None),
+                OracleSqlGenerator.getData(schema, columnList.get, pred),
                 columnList.get
               )) ->
                 Some({
