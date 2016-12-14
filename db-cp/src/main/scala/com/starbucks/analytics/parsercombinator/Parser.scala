@@ -5,7 +5,7 @@ import java.io.Reader
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -311,33 +311,58 @@ object Parser extends RegexParsers {
         val dbConnectionInfo = s._1
         val adlsConnectionInfo = s._2
 
-        // get predicate from the Select.
-        val pred = sl._5.get
-        // build the predicate buffer for select statement.
-        val predBuffer: StringBuilder = new StringBuilder
-        predBuffer ++= s"${pred._1._1._1._1._2.str}="
-        if (pred._2.isDefined) predBuffer ++= "'"
+        //TODO: Use the USING Token to dynamically inject SQL Provider
 
-        var predicateResultList = List[String]()
-        if (declarationMap.contains(sl._5.get._1._2.str)) {
-          predicateResultList = declarationMap(sl._5.get._1._2.str) match {
-            case SQL(i) => {
-              val predicateList = DBManager.withResultSetIterator[List[String], String](
-                dbConnectionInfo,
-                i,
-                o.fetchSize, {
-                result => result.getString(1)
-              }, {
-                resultSetIterator => resultSetIterator.toList
+        // Parse the predicates
+        var predicateList = List[String]()
+        var isQuoted = false
+        var predicateColumnName = ""
+        if (sl._5.isDefined) {
+          sl._5.get match {
+            case pr ~ id ~ comp ~ sq ~ v ~ eq =>
+              // column Name
+              predicateColumnName = id.str
+              // quotation
+              if (sq.isDefined) {
+                if (eq.isDefined) {
+                  isQuoted = true
+                } else {
+                  throw new Exception("Imbalanced quote. Not able to parse predicates.")
+                }
               }
-              )
-              predicateList.get
-            }
-            case _ => throw new Exception("Unknown predicate found.")
+              // predicate value
+              if (declarationMap.contains(v.str)) {
+                declarationMap(v.str) match {
+                  case SQL(i) =>
+                    val predicateResultSet = DBManager.withResultSetIterator[List[String], String](
+                      dbConnectionInfo,
+                      i,
+                      o.fetchSize, {
+                      result => result.getString(1)
+                    }, {
+                      resultSetIterator => resultSetIterator.toList
+                    }
+                    )
+                    if (predicateResultSet.isSuccess) {
+                      predicateList = predicateResultSet.get
+                    } else {
+                      throw new Exception(
+                        s"""
+                           |There was a problem executing $i. Unable to substitute predicates
+                           |for column $predicateColumnName using variable ${v.str}.
+                         """.stripMargin
+                      )
+                    }
+                  case LITERAL(lit) =>
+                    predicateList = List(lit)
+                  case _ => throw new Exception(s"Unknown variable ${v.str} is defined for predicate $predicateColumnName")
+                }
+              } else {
+                throw new Exception(s"Cannot find the variable definition ${v.str} for predicate $predicateColumnName")
+              }
           }
         }
 
-        //TODO: Use the USING Token to dynamically inject SQL Provider
         // generate the schema information
         val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
           dbConnectionInfo,
@@ -360,16 +385,14 @@ object Parser extends RegexParsers {
           }
         )
         if (schemaList.isSuccess) {
-
-          val mergedList = schemaList.get cross predicateResultList
-
+          val mergedList = schemaList.get cross predicateList
           sqlStatements = mergedList.map((s) => {
             val schema = s._1
             val pred = s._2
             // Add system variables to the symbol/declaration map
             declarationMap("OWNER") = LITERAL(schema.owner)
             declarationMap("TABLE") = LITERAL(schema.tableName)
-            declarationMap("PREDICATE") = pred match {
+            declarationMap(predicateColumnName) = pred match {
               case Some(s) =>
                 LITERAL(s)
               case None =>
@@ -396,7 +419,21 @@ object Parser extends RegexParsers {
             )
             if (columnList.isSuccess) {
               Some((
-                OracleSqlGenerator.getData(schema, columnList.get, pred),
+                OracleSqlGenerator.getData(schema, columnList.get, {
+                  if (pred.isDefined) {
+                    val builder = new StringBuilder
+                    builder ++= predicateColumnName
+                    builder ++= "="
+                    if (isQuoted) {
+                      builder ++= s"'${pred.get}'"
+                    } else {
+                      builder ++= pred.get
+                    }
+                    Some(builder.toString)
+                  } else {
+                    None
+                  }
+                }),
                 columnList.get
               )) ->
                 Some({
