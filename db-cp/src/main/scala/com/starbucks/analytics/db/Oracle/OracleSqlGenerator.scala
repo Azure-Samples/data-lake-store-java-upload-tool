@@ -1,6 +1,6 @@
 package com.starbucks.analytics.db.Oracle
 
-import com.starbucks.analytics.db.{SchemaInfo, SqlGenerator}
+import com.starbucks.analytics.db.{ SchemaInfo, SqlGenerator }
 
 /**
  * Implementation of the sql generator trait for Oracle

@@ -2,12 +2,13 @@ package com.starbucks.analytics.parsercombinator
 
 import java.io.Reader
 
-import com.starbucks.analytics.UploaderOptionsInfo
+import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
 
 import scala.collection.mutable
+import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
 
@@ -16,6 +17,10 @@ import scala.util.parsing.combinator.RegexParsers
  * used for uploading
  */
 object Parser extends RegexParsers {
+  implicit class Crossable[X](xs: Traversable[X]) {
+    def cross[Y](ys: Traversable[Y]) = for { x <- xs; y <- ys } yield (x, y)
+  }
+
   /**
    * Parsers the input stream and presents the results
    * of lexing the content in the stream
@@ -300,118 +305,113 @@ object Parser extends RegexParsers {
         // get predicate from the Select.
         val pred = sl._5.get
         // build the predicate buffer for select statement.
-        val predBuffer:StringBuilder = new StringBuilder
+        val predBuffer: StringBuilder = new StringBuilder
         predBuffer ++= s"${pred._1._1._1._1._2.str}="
-        if(pred._2.isDefined) predBuffer ++= "'"
+        if (pred._2.isDefined) predBuffer ++= "'"
 
         var predicateResultList = List[String]()
-          if(declarationMap.contains(sl._5.get._1._2.str)) {
-            predicateResultList = declarationMap(sl._5.get._1._2.str) match {
-              case SQL(i) => {
-                val predicateList = DBManager.withResultSetIterator[List[String], String](
-                  dbConnectionInfo,
-                  i,
-                  o.fetchSize, {
-                    result => result.getString(1)
-                  }, {
-                    resultSetIterator => resultSetIterator.toList
-                  })
-                predicateList.get
-              }
-              case _ => throw new Exception("Unknown predicate found.")
+        if (declarationMap.contains(sl._5.get._1._2.str)) {
+          predicateResultList = declarationMap(sl._5.get._1._2.str) match {
+            case SQL(i) => {
+              val predicateList = DBManager.withResultSetIterator[List[String], String](
+                dbConnectionInfo,
+                i,
+                o.fetchSize, {
+                result => result.getString(1)
+              }, {
+                resultSetIterator => resultSetIterator.toList
+              })
+              predicateList.get
             }
+            case _ => throw new Exception("Unknown predicate found.")
+          }
         }
 
         //TODO: Use the USING Token to dynamically inject SQL Provider
         // generate the schema information
-        if(!predicateResultList.isEmpty) {
-          for(predResult <- predicateResultList){
-            val predicateInUse = {
-              if (predBuffer.endsWith("'"))
-                s"${predBuffer.toString}${predResult.toString}'"
-              else
-                s"${predBuffer.toString}${predResult.toString}"
+        val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
+          dbConnectionInfo,
+          OracleSqlGenerator.getPartitions(
+            sl._1,
+            sl._2,
+            sl._3,
+            sl._4
+          ),
+          o.fetchSize, {
+            resultSet =>
+              SchemaInfo(
+                resultSet.getString(1),
+                resultSet.getString(2),
+                Option(resultSet.getString(3)),
+                Option(resultSet.getString(4))
+              )
+          }, {
+            resultsIterator => resultsIterator.toList
+          }
+        )
+        if (schemaList.isSuccess) {
+
+          val mergedList = schemaList.get cross predicateResultList
+
+          sqlStatements = mergedList.map((s) => {
+            val schema = s._1
+            val pred = s._2
+            // Add system variables to the symbol/declaration map
+            declarationMap("OWNER") = LITERAL(schema.owner)
+            declarationMap("TABLE") = LITERAL(schema.tableName)
+            declarationMap("PREDICATE") = LITERAL(pred)
+            declarationMap("PARTITION") = {
+              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
             }
-            val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
+            declarationMap("SUBPARTITION") = {
+              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get) else EMPTY()
+            }
+
+            val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
               dbConnectionInfo,
-              OracleSqlGenerator.getPartitions(
-                sl._1,
-                sl._2,
-                sl._3,
-                sl._4
+              OracleSqlGenerator.getColumnNames(
+                schema.owner,
+                schema.tableName
               ),
               o.fetchSize, {
-                resultSet =>
-                  SchemaInfo(
-                    resultSet.getString(1),
-                    resultSet.getString(2),
-                    Option(resultSet.getString(3)),
-                    Option(resultSet.getString(4))
-                  )
+                resultSet => resultSet.getString(1)
               }, {
-                resultsIterator => resultsIterator.toList
+                resultSetIterator => resultSetIterator.toList
               }
             )
-            if (schemaList.isSuccess) {
-              sqlStatements = schemaList.get.map(schema => {
-                // Add system variables to the symbol/declaration map
-                declarationMap("PREDICATE") = LITERAL(predResult)
-                declarationMap("OWNER") = LITERAL(schema.owner)
-                declarationMap("TABLE") = LITERAL(schema.tableName)
-                declarationMap("PARTITION") = {
-                  if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
-                }
-                declarationMap("SUBPARTITION") = {
-                  if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get) else EMPTY()
-                }
-
-                val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
-                  dbConnectionInfo,
-                  OracleSqlGenerator.getColumnNames(
-                    schema.owner,
-                    schema.tableName
-                  ),
-                  o.fetchSize, {
-                    resultSet => resultSet.getString(1)
-                  }, {
-                    resultSetIterator => resultSetIterator.toList
-                  }
-                )
-                if (columnList.isSuccess) {
-                  Some((
-                    OracleSqlGenerator.getData(schema, columnList.get, Some(predicateInUse)),
-                    columnList.get
-                    )) ->
-                    Some({
-                      t match {
-                        case LITERAL(str) =>
-                          str
-                        case VARIABLE(str) =>
-                          if (declarationMap.contains(str)) {
-                            declarationMap(str) match {
-                              case INTERPOLATION(i) =>
-                                val result = InterpolationParser.parse(i, declarationMap)
-                                if (result.isRight)
-                                  result.right.get
-                                else
-                                  "" // Should not happen
-                              case unknown =>
-                                throw new Exception(s"The variable $str is defined but don't know how to parse $unknown.")
-                            }
-                          } else {
-                            throw new Exception(s"The variable $str is not declared.")
-                          }
-                        case _ =>
-                          throw new Exception(s"Unrecognized token $t")
+            if (columnList.isSuccess) {
+              Some((
+                OracleSqlGenerator.getData(schema, columnList.get, None),
+                columnList.get
+              )) ->
+                Some({
+                  t match {
+                    case LITERAL(str) =>
+                      str
+                    case VARIABLE(str) =>
+                      if (declarationMap.contains(str)) {
+                        declarationMap(str) match {
+                          case INTERPOLATION(i) =>
+                            val result = InterpolationParser.parse(i, declarationMap)
+                            if (result.isRight)
+                              result.right.get
+                            else
+                              "" // Should not happen
+                          case unknown =>
+                            throw new Exception(s"The variable $str is defined but don't know how to parse $unknown.")
+                        }
+                      } else {
+                        throw new Exception(s"The variable $str is not declared.")
                       }
-                    })
-                } else {
-                  None -> None
-                }
-              }).toMap
+                    case _ =>
+                      throw new Exception(s"Unrecognized token $t")
+                  }
+                })
+            } else {
+              None -> None
             }
-          }
-      }
+          }).toMap
+        }
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
   }
