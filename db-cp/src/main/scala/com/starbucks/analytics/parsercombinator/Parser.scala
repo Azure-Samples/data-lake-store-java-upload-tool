@@ -444,7 +444,7 @@ object Parser extends RegexParsers {
                       if (declarationMap.contains(str)) {
                         declarationMap(str) match {
                           case INTERPOLATION(i) =>
-                            val result = InterpolationParser.parse(i, declarationMap)
+                            val result = InterpolationParser.parse(i, dbConnectionInfo, declarationMap)
                             if (result.isRight)
                               result.right.get
                             else

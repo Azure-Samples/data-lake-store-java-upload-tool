@@ -1,5 +1,7 @@
 package com.starbucks.analytics.parsercombinator
 
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager }
+
 import scala.collection.mutable
 import scala.util.parsing.combinator.RegexParsers
 
@@ -9,19 +11,24 @@ import scala.util.parsing.combinator.RegexParsers
  */
 object InterpolationParser extends RegexParsers {
   var declarationMap: mutable.Map[String, Token] = mutable.Map[String, Token]()
+  var dbConnectionInfo: DBConnectionInfo = _
 
   /**
    * Parsers the input stream and presents the results
    * of parsing the content in the interpolation string
    *
    * @param reader Input reader
+   * @param dbConnectionInfo Database connection information
+   * @param declarations Symbol map containing variable declarations used in the program
    * @return Result of lexing
    */
   def parse(
-    reader:       String,
-    declarations: mutable.Map[String, Token]
+    reader:           String,
+    dbConnectionInfo: DBConnectionInfo,
+    declarations:     mutable.Map[String, Token]
   ): Either[UploaderParserError, String] = {
-    declarationMap = declarations
+    this.declarationMap = declarations
+    this.dbConnectionInfo = dbConnectionInfo
     val parsed = parseAll(block, reader)
     parsed match {
       case NoSuccess(msg, next) => Left(
@@ -60,9 +67,29 @@ object InterpolationParser extends RegexParsers {
           if (declarationMap.contains(v)) {
             declarationMap(v) match {
               case INTERPOLATION(i) =>
-                val result = InterpolationParser.parse(i, declarationMap)
+                val result = InterpolationParser.parse(i, dbConnectionInfo, declarationMap)
                 if (result.isRight) {
                   builder ++= result.right.get
+                }
+              case SQL(s) =>
+                val result = DBManager.withResultSetIterator[List[String], String](
+                  dbConnectionInfo,
+                  s,
+                  1, {
+                    result => result.getString(1)
+                  }, {
+                    resultSetIterator => resultSetIterator.toList
+                  }
+                )
+                if (result.isSuccess) {
+                  result.get.take(1).foreach(r => builder ++= r)
+                } else {
+                  throw new Exception(
+                    s"""
+                       |The variable $v is defined as a SQL Statement $s. Executing the
+                       |SQL statement resulted in an exception ${result.failed.get}
+                     """.stripMargin
+                  )
                 }
               case LITERAL(lit) =>
                 builder ++= lit
