@@ -13,6 +13,8 @@ case class IDENTIFIER(str: String) extends Token
 case class VARIABLE(str: String) extends Token
 case class INTERPOLATION(str: String) extends Token
 case class SQL(str: String) extends Token
+case class OPERATOR(op: String) extends Token
+case class FUNCTION(fun: String) extends Token
 case class ASSIGNMENT() extends Token
 // Parameter Tokens
 case class WITH() extends Token
@@ -32,7 +34,6 @@ case class TABLES() extends Token
 case class PARTITIONS() extends Token
 case class SUB_PARTITIONS() extends Token
 case class PREDICATE() extends Token
-case class EQUALS() extends Token
 case class UPLOAD() extends Token
 // Options
 case class OPTIONS() extends Token

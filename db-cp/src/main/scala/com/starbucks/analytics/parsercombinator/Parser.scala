@@ -69,6 +69,10 @@ object Parser extends RegexParsers {
     }
   }
 
+  private def functionToken: Parser[FUNCTION] = {
+    "^`[a-zA-Z0-9\\-_,\\/\\.\\(\\)'\\s]*".r ^^ { str => FUNCTION(str.substring(1)) }
+  }
+
   private def assignmentToken: Parser[ASSIGNMENT] = positioned {
     ":=" ^^ (_ => ASSIGNMENT())
   }
@@ -109,6 +113,7 @@ object Parser extends RegexParsers {
     "TARGET" ^^ (_ => TARGET())
   }
 
+  //TODO: Use the USING Token to dynamically inject SQL Provider
   private def usingToken: Parser[USING] = positioned {
     "USING" ^^ (_ => USING())
   }
@@ -137,8 +142,8 @@ object Parser extends RegexParsers {
     "PREDICATE" ^^ (_ => PREDICATE())
   }
 
-  private def equalsToken: Parser[EQUALS] = positioned {
-    "=" ^^ (_ => EQUALS())
+  private def operatorToken: Parser[OPERATOR] = positioned {
+    ">=|<=|=|>|<".r ^^ (op => OPERATOR(op))
   }
 
   private def uploadToken: Parser[UPLOAD] = positioned {
@@ -187,7 +192,7 @@ object Parser extends RegexParsers {
   def declaration: Parser[(String, Token)] = {
     variableToken ~ assignmentToken ~
       (interpolationToken | sqlToken) ^^ {
-        case x ~ y ~ z => (x.str, z)
+        case x ~ _ ~ z => (x.str, z)
       }
   }
 
@@ -223,8 +228,8 @@ object Parser extends RegexParsers {
             p._2 match {
               case LITERAL(literal) =>
                 literal
+              // TODO: Add support for variables
               case _ =>
-                // TODO: Add support for variables
                 ""
             }
           }
@@ -244,8 +249,8 @@ object Parser extends RegexParsers {
   private def table = tableToken ~ identifierToken
   private def partition = partitionsToken ~ identifierToken
   private def subPartition = subPartitionsToken ~ identifierToken
-  private def predicate = predicateToken ~ identifierToken ~
-    equalsToken ~ opt(quoteToken) ~ variableToken ~ opt(quoteToken)
+  private def predicate = predicateToken ~ identifierToken ~ opt(functionToken) ~
+    operatorToken ~ opt(quoteToken) ~ variableToken ~ opt(quoteToken)
   private def select = {
     selectToken ~> owner ~ table ~ opt(partition) ~
       opt(subPartition) ~ opt(predicate) ^^ {
@@ -316,12 +321,22 @@ object Parser extends RegexParsers {
         // Parse the predicates
         var predicateList = List[String]()
         var isQuoted = false
-        var predicateColumnName = ""
+        var predicateColumn = ""
+        var predicateAlias = ""
+        var operator = "="
         if (sl._5.isDefined) {
           sl._5.get match {
-            case pr ~ id ~ comp ~ sq ~ v ~ eq =>
+            case _ ~ id ~ fn ~ op ~ sq ~ v ~ eq =>
               // column Name
-              predicateColumnName = id.str
+              predicateAlias = id.str
+              // functions
+              if (fn.isDefined) {
+                predicateColumn = fn.get.fun
+              } else {
+                predicateColumn = predicateAlias
+              }
+              // operator
+              operator = op.op
               // quotation
               if (sq.isDefined) {
                 if (eq.isDefined) {
@@ -349,16 +364,16 @@ object Parser extends RegexParsers {
                       throw new Exception(
                         s"""
                            |There was a problem executing $i. Unable to substitute predicates
-                           |for column $predicateColumnName using variable ${v.str}.
+                           |for column $predicateAlias using variable ${v.str}.
                          """.stripMargin
                       )
                     }
                   case LITERAL(lit) =>
                     predicateList = List(lit)
-                  case _ => throw new Exception(s"Unknown variable ${v.str} is defined for predicate $predicateColumnName")
+                  case _ => throw new Exception(s"Unknown variable ${v.str} is defined for predicate $predicateAlias")
                 }
               } else {
-                throw new Exception(s"Cannot find the variable definition ${v.str} for predicate $predicateColumnName")
+                throw new Exception(s"Cannot find the variable definition ${v.str} for predicate $predicate")
               }
           }
         }
@@ -392,9 +407,9 @@ object Parser extends RegexParsers {
             // Add system variables to the symbol/declaration map
             declarationMap("OWNER") = LITERAL(schema.owner)
             declarationMap("TABLE") = LITERAL(schema.tableName)
-            declarationMap(predicateColumnName) = pred match {
-              case Some(s) =>
-                LITERAL(s)
+            declarationMap(predicateAlias) = pred match {
+              case Some(pa) =>
+                LITERAL(pa)
               case None =>
                 EMPTY()
             }
@@ -422,8 +437,8 @@ object Parser extends RegexParsers {
                 OracleSqlGenerator.getData(schema, columnList.get, {
                   if (pred.isDefined) {
                     val builder = new StringBuilder
-                    builder ++= predicateColumnName
-                    builder ++= "="
+                    builder ++= predicateColumn
+                    builder ++= operator
                     if (isQuoted) {
                       builder ++= s"'${pred.get}'"
                     } else {
