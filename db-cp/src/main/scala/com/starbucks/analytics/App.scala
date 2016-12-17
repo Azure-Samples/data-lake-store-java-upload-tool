@@ -7,7 +7,7 @@ import com.starbucks.analytics.db.{ DBManager, Utilities }
 import com.starbucks.analytics.parsercombinator.Parser
 import org.slf4j.{ Logger, LoggerFactory }
 
-import scala.collection.parallel.{ ForkJoinTaskSupport, ParMap, ParSeq }
+import scala.collection.parallel.{ ForkJoinTaskSupport, ParMap }
 
 /**
  * Represents the configuration required for the application
@@ -120,7 +120,7 @@ object App extends App {
         .valueName("<file name>")
         .required()
         .validate(f =>
-          if (f exists) success
+          if (f.exists()) success
           else failure(s"The file ${f.getAbsolutePath} should exist."))
         .action { (x, c) => c.copy(file = x) }
         .text("File containing the uploader")
@@ -128,8 +128,8 @@ object App extends App {
 
     // Evaluate
     parser.parse(args, Config()) match {
-      case Some(config) =>
-        Some(config)
+      case Some(cfg) =>
+        Some(cfg)
       case None =>
         None
     }
