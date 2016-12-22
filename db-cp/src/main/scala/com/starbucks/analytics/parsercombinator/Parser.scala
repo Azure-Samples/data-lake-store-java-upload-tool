@@ -5,7 +5,7 @@ import java.io.Reader
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -305,7 +305,7 @@ object Parser extends RegexParsers {
               // first character of the string passed in as
               // the parameter for separator
               var sep: Char = 0x00
-              val conv = Try(s._2.str.toInt)
+              val conv = Try(Integer.parseInt(s._2.str, 16))
               if (conv.isSuccess) {
                 sep = conv.get.toChar
               } else {
