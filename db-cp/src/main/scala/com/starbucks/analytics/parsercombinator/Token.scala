@@ -15,6 +15,7 @@ case class INTERPOLATION(str: String) extends Token
 case class SQL(str: String) extends Token
 case class OPERATOR(op: String) extends Token
 case class FUNCTION(fun: String) extends Token
+case class COMMENT(str: String) extends Token
 case class ASSIGNMENT() extends Token
 // Parameter Tokens
 case class WITH() extends Token

@@ -5,7 +5,7 @@ import java.io.Reader
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
+import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -38,7 +38,7 @@ object Parser extends RegexParsers {
    * @return Result of lexing
    */
   def parse(reader: Reader): Either[UploaderParserError, (DBConnectionInfo, ADLSConnectionInfo, UploaderOptionsInfo, Map[Option[(String, List[String])], Option[String]])] = {
-    val parsed = parseAll(block, reader)
+    val parsed = parseAll(fileBlock, reader)
     parsed match {
       case NoSuccess(msg, next) => Left(
         UploaderParserError(
@@ -51,6 +51,10 @@ object Parser extends RegexParsers {
   }
 
   // Combinators for lexing the language
+  private def commentToken: Parser[COMMENT] = {
+    """(/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(//.*)""".stripMargin.r ^^ { str => COMMENT(str) }
+  }
+
   private def identifierToken: Parser[IDENTIFIER] = {
     "[a-zA-Z0-9_,\\/\\.]*".r ^^ { str => IDENTIFIER(str) }
   }
@@ -294,8 +298,21 @@ object Parser extends RegexParsers {
           UploaderOptionsInfo(
             b._2.str.toInt * 1024 * 1024,
             p._2.str.toInt,
-            f._2.str.toInt,
-            s._2.str.charAt(0)
+            f._2.str.toInt, {
+              // Note: Support non-printable characters
+              // Converting the string to integer and translating
+              // to Char gives the Hex value. If not, use the
+              // first character of the string passed in as
+              // the parameter for separator
+              var sep: Char = 0x00
+              val conv = Try(s._2.str.toInt)
+              if (conv.isSuccess) {
+                sep = conv.get.toChar
+              } else {
+                sep = s._2.str.charAt(0)
+              }
+              sep
+            }
           )
       }
   }
@@ -481,5 +498,9 @@ object Parser extends RegexParsers {
         }
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
+  }
+
+  private def fileBlock = {
+    opt(commentToken) ~> block <~ opt(commentToken)
   }
 }
