@@ -422,8 +422,8 @@ object Parser extends RegexParsers {
             val schema = s._1
             val pred = s._2
             // Add system variables to the symbol/declaration map
-            declarationMap("OWNER") = LITERAL(schema.owner)
-            declarationMap("TABLE") = LITERAL(schema.tableName)
+            declarationMap("OWNER") = LITERAL(schema.owner.toLowerCase)
+            declarationMap("TABLE") = LITERAL(schema.tableName.toLowerCase)
             declarationMap(predicateAlias) = pred match {
               case Some(pa) =>
                 LITERAL(pa)
@@ -431,10 +431,10 @@ object Parser extends RegexParsers {
                 EMPTY()
             }
             declarationMap("PARTITION") = {
-              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
+              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get.toLowerCase) else EMPTY()
             }
             declarationMap("SUBPARTITION") = {
-              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get) else EMPTY()
+              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get.toLowerCase) else EMPTY()
             }
 
             val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](

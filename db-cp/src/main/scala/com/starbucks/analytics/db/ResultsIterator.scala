@@ -2,6 +2,8 @@ package com.starbucks.analytics.db
 
 import java.sql.ResultSet
 
+import org.slf4j.{ Logger, LoggerFactory }
+
 /**
  * A private class that implements the Scala iterator interface for JDBC results.
  *
@@ -15,6 +17,9 @@ class ResultsIterator[R](
     resultSet: ResultSet,
     f:         ResultSet => R
 ) extends Iterator[R] {
+  var rowCount: Long = 0L
+  val logger: Logger = LoggerFactory.getLogger(this.getClass)
+
   /**
    * Retrieves the next row of data from a result set.  Note that this method returns an Option monad
    * If the end of the result set has been reached, it will return None, otherwise it will return Some[Map[String, AnyRef]]
@@ -25,8 +30,10 @@ class ResultsIterator[R](
   private def getNextRow(resultSet: ResultSet): Option[R] = {
     if (resultSet.next())
       Some(f(resultSet))
-    else
+    else {
+      logger.debug(s"Number of rows processed: $rowCount")
       None
+    }
   }
 
   /**
@@ -50,6 +57,7 @@ class ResultsIterator[R](
    */
   override def next(): R = {
     val rowData = nextRow.get
+    rowCount += 1
     nextRow = getNextRow(resultSet)
     rowData
   }
