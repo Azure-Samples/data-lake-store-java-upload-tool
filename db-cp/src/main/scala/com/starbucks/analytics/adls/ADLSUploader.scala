@@ -1,14 +1,14 @@
 package com.starbucks.analytics.adls
 
-import java.util.concurrent.{ExecutorService, Executors, LinkedBlockingQueue, TimeUnit}
+import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, TimeUnit }
 import java.util.concurrent.atomic.AtomicBoolean
 
-import com.microsoft.azure.datalake.store.{ADLFileOutputStream, ADLStoreClient, IfExists}
-import com.microsoft.azure.datalake.store.oauth2.{AzureADAuthenticator, AzureADToken}
-import org.slf4j.{Logger, LoggerFactory}
+import com.microsoft.azure.datalake.store.{ ADLFileOutputStream, ADLStoreClient, IfExists }
+import com.microsoft.azure.datalake.store.oauth2.{ AzureADAuthenticator, AzureADToken }
+import org.slf4j.{ Logger, LoggerFactory }
 
 import scala.collection.mutable
-import scala.util.{Failure, Success, Try}
+import scala.util.{ Failure, Success, Try }
 
 /**
  * Manages uploads of files to the Azure Data Lake Store.

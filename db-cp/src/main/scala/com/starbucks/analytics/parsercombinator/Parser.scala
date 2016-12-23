@@ -174,6 +174,10 @@ object Parser extends RegexParsers {
     "SEPARATOR" ^^ (_ => SEPARATOR())
   }
 
+  private def rowSeparatorToken: Parser[ROWSEPARATOR] = positioned {
+    "ROWSEPARATOR" ^^ (_ => ROWSEPARATOR())
+  }
+
   private def quoteToken: Parser[QUOTE] = positioned {
     "'" ^^ (_ => QUOTE())
   }
@@ -291,21 +295,33 @@ object Parser extends RegexParsers {
   private def desiredParallelism = desiredParallelismToken ~ literalToken
   private def fetchSize = fetchSizeToken ~ literalToken
   private def separator = separatorToken ~ literalToken
+  private def rowSeparator = rowSeparatorToken ~ literalToken
   private def options: Parser[UploaderOptionsInfo] = {
-    optionsToken ~> desiredBufferSize ~
-      desiredParallelism ~ fetchSize ~ separator ^^ {
-        case b ~ p ~ f ~ s =>
+    optionsToken ~> desiredBufferSize ~ desiredParallelism ~
+      fetchSize ~ separator ~ rowSeparator ^^ {
+        case b ~ p ~ f ~ s ~ rs =>
           UploaderOptionsInfo(
             b._2.str.toInt * 1024 * 1024,
             p._2.str.toInt,
-            f._2.str.toInt, {
-              // Note: Support non-printable characters
-              // Converting the string to integer and translating
-              // to Char gives the Hex value. If not, use the
-              // first character of the string passed in as
-              // the parameter for separator
+            f._2.str.toInt,
+            // Note: Support non-printable characters
+            // Converting the string to integer and translating
+            // to Char gives the Hex value. If not, use the
+            // first character of the string passed in as
+            // the parameter for separator
+            {
               var sep: Char = 0x00
               val conv = Try(Integer.parseInt(s._2.str, 16))
+              if (conv.isSuccess) {
+                sep = conv.get.toChar
+              } else {
+                sep = s._2.str.charAt(0)
+              }
+              sep
+            },
+            {
+              var sep: Char = 0x00
+              val conv = Try(Integer.parseInt(rs._2.str, 16))
               if (conv.isSuccess) {
                 sep = conv.get.toChar
               } else {

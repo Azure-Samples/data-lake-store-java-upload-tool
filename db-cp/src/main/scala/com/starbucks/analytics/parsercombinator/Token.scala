@@ -42,4 +42,5 @@ case class DESIRED_BUFFER_SIZE() extends Token
 case class DESIRED_PARALLELISM() extends Token
 case class FETCH_SIZE() extends Token
 case class SEPARATOR() extends Token
+case class ROWSEPARATOR() extends Token
 case class QUOTE() extends Token

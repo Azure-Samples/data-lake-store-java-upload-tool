@@ -81,7 +81,7 @@ object App extends App {
                 resultSet,
                 sqlFile._1.get._2,
                 uploaderOptionsInfo.separator,
-                '\n'
+                uploaderOptionsInfo.rowSeparator
               )
           }, {
             resultsIterator => resultsIterator.foreach(uploader.bufferedUpload)
