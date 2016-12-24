@@ -5,7 +5,7 @@ import java.io.Reader
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
+import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
 
 import scala.collection.mutable
 import scala.language.postfixOps
@@ -315,7 +315,11 @@ object Parser extends RegexParsers {
               if (conv.isSuccess) {
                 sep = conv.get.toChar
               } else {
-                sep = s._2.str.charAt(0)
+                val m: Option[String] = "\t".r.findFirstIn(s._2.str)
+                if (m.isDefined)
+                  sep = '\t'
+                else
+                  sep = s._2.str.charAt(0)
               }
               sep
             },
@@ -325,7 +329,11 @@ object Parser extends RegexParsers {
               if (conv.isSuccess) {
                 sep = conv.get.toChar
               } else {
-                sep = s._2.str.charAt(0)
+                val m: Option[String] = "\n".r.findFirstIn(s._2.str)
+                if (m.isDefined)
+                  sep = '\n'
+                else
+                  sep = s._2.str.charAt(0)
               }
               sep
             }
