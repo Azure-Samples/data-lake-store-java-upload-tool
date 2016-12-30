@@ -35,9 +35,6 @@ resolvers in ThisBuild ++= Seq(
 
 unmanagedJars in Compile ++= Seq(
   file("lib/ojdbc7.jar"),
-  file("lib/sqljdbc.jar"),
-  file("lib/sqljdbc4.jar"),
-  file("lib/sqljdbc41.jar"),
   file("lib/sqljdbc42.jar"))
 
 SbtScalariform.scalariformSettings

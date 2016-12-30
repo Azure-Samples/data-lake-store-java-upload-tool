@@ -4,7 +4,7 @@ import com.google.inject.AbstractModule
 import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
 import com.starbucks.analytics.db.SqlGenerator
 import com.starbucks.analytics.db.SqlServer.SqlServerSqlGenerator
-import net.codingwell.scalaguice.{ScalaMapBinder, ScalaModule}
+import net.codingwell.scalaguice.{ ScalaMapBinder, ScalaModule }
 
 class SqlGeneratorModule extends AbstractModule with ScalaModule {
   def configure(): Unit = {
