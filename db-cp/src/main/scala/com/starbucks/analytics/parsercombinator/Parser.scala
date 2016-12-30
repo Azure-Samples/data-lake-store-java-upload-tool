@@ -2,12 +2,15 @@ package com.starbucks.analytics.parsercombinator
 
 import java.io.Reader
 
+import com.google.inject.Guice
+import com.google.inject.name.Names
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo}
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator }
+import com.starbucks.analytics.di.SqlGeneratorModule
 
 import scala.collection.mutable
+import scala.collection.immutable
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
@@ -117,7 +120,6 @@ object Parser extends RegexParsers {
     "TARGET" ^^ (_ => TARGET())
   }
 
-  //TODO: Use the USING Token to dynamically inject SQL Provider
   private def usingToken: Parser[USING] = positioned {
     "USING" ^^ (_ => USING())
   }
@@ -252,6 +254,9 @@ object Parser extends RegexParsers {
       }
   }
 
+  // combinator for parsing the sql generator
+  private def sqlGenerator = usingToken ~ identifierToken
+
   // combinators for parsing select tokens
   private def owner = ownerToken ~ identifierToken
   private def table = tableToken ~ identifierToken
@@ -343,8 +348,8 @@ object Parser extends RegexParsers {
 
   // Combinator that brings it all together
   private def block = {
-    declarations ~ setup ~ select ~ targetPath ~ options ^^ {
-      case d ~ s ~ sl ~ t ~ o =>
+    declarations ~ setup ~ sqlGenerator ~ select ~ targetPath ~ options ^^ {
+      case d ~ s ~ sg ~ sl ~ t ~ o =>
         var sqlStatements: Map[Option[(String, List[String])], Option[String]] =
           Map[Option[(String, List[String])], Option[String]]()
 
@@ -357,7 +362,19 @@ object Parser extends RegexParsers {
         val dbConnectionInfo = s._1
         val adlsConnectionInfo = s._2
 
-        //TODO: Use the USING Token to dynamically inject SQL Provider
+        // parse the sql generator and dynamically inject the right provider
+        val sqlStatementGenerator: SqlGenerator = sg match {
+          case _ ~ id =>
+            val injector = Guice.createInjector(new SqlGeneratorModule())
+            import net.codingwell.scalaguice.InjectorExtensions._
+            val map = injector.instance[immutable.Map[String, SqlGenerator]]
+            if (map.contains(id.str.toUpperCase)) {
+              map(id.str.toUpperCase)
+            } else {
+              throw new Exception(s"SQL Generator ${id.str.toUpperCase} is not defined")
+            }
+          case _ => throw new Exception(s"Unknown sql generator $sg")
+        }
 
         // Parse the predicates
         var predicateList = List[String]()
@@ -422,7 +439,7 @@ object Parser extends RegexParsers {
         // generate the schema information
         val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
           dbConnectionInfo,
-          OracleSqlGenerator.getPartitions(
+          sqlStatementGenerator.getPartitions(
             sl._1,
             sl._2,
             sl._3,
@@ -463,7 +480,7 @@ object Parser extends RegexParsers {
 
             val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
               dbConnectionInfo,
-              OracleSqlGenerator.getColumnNames(
+              sqlStatementGenerator.getColumnNames(
                 schema.owner,
                 schema.tableName
               ),
@@ -475,7 +492,7 @@ object Parser extends RegexParsers {
             )
             if (columnList.isSuccess) {
               Some((
-                OracleSqlGenerator.getData(schema, columnList.get, {
+                sqlStatementGenerator.getData(schema, columnList.get, {
                   if (pred.isDefined) {
                     val builder = new StringBuilder
                     builder ++= predicateColumn
