@@ -4,7 +4,7 @@ import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, T
 import java.util.concurrent.atomic.AtomicBoolean
 
 import com.microsoft.azure.datalake.store.{ ADLFileOutputStream, ADLStoreClient, IfExists }
-import com.microsoft.azure.datalake.store.oauth2.{ AzureADAuthenticator, AzureADToken }
+import com.microsoft.azure.datalake.store.oauth2.{ AccessTokenProvider, AzureADAuthenticator, AzureADToken, ClientCredsTokenProvider }
 import org.slf4j.{ Logger, LoggerFactory }
 
 import scala.collection.mutable
@@ -137,33 +137,33 @@ object ADLSUploader {
    *                                    you registered with active directory
    * @return Azure AD Token
    */
-  private def getAzureADToken(
+  private def getAzureADTokenProvider(
     clientId:                    String,
     clientKey:                   String,
     authenticationTokenEndpoint: String
-  ): AzureADToken = {
-    val token: AzureADToken = AzureADAuthenticator.getTokenUsingClientCreds(
+  ): AccessTokenProvider = {
+    val tokenProvider = new ClientCredsTokenProvider(
       authenticationTokenEndpoint,
       clientId,
       clientKey
     )
-    token
+    tokenProvider
   }
 
   /**
    * Returns a client to connect to Azure Data Lake Store.
    *
    * @param accountFQDN  Fully Qualified Domain Name of the Azure data lake store
-   * @param azureADToken Azure AD Token. You can use getAzureADToken to get a valid token.
+   * @param azureADTokenProvider Azure AD Token Provider . You can use getAzureADToken to get a valid token.
    * @return Azure Data Lake Store client
    */
   private def getAzureDataLakeStoreClient(
-    accountFQDN:  String,
-    azureADToken: AzureADToken
+    accountFQDN:          String,
+    azureADTokenProvider: AccessTokenProvider
   ): ADLStoreClient = {
     ADLStoreClient.createClient(
       accountFQDN,
-      azureADToken
+      azureADTokenProvider
     )
   }
 
@@ -194,7 +194,7 @@ object ADLSUploader {
     // Better to abstract this per upload to avoid exceptions and reduce complexity.
     val adlStoreClient: ADLStoreClient = getAzureDataLakeStoreClient(
       accountFQDN,
-      getAzureADToken(
+      getAzureADTokenProvider(
         clientId,
         clientKey,
         authenticationTokenEndpoint
