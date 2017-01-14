@@ -3,14 +3,12 @@ package com.starbucks.analytics.parsercombinator
 import java.io.Reader
 
 import com.google.inject.Guice
-import com.google.inject.name.Names
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
 import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator }
 import com.starbucks.analytics.di.SqlGeneratorModule
 
-import scala.collection.mutable
-import scala.collection.immutable
+import scala.collection.{ immutable, mutable }
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
@@ -31,6 +29,54 @@ object Parser extends RegexParsers {
           (lhs, Some(rhs))
         })
     })
+  }
+
+  def parsePartitions(
+    declarationMap:   mutable.Map[String, Token],
+    dbConnectionInfo: DBConnectionInfo,
+    token:            Token
+  ): Option[List[String]] = {
+    token match {
+      case VARIABLE(str) =>
+        if (declarationMap.contains(str)) {
+          declarationMap(str) match {
+            case INTERPOLATION(i) =>
+              val result = InterpolationParser.parse(i, dbConnectionInfo, declarationMap)
+              if (result.isRight) {
+                return Some(result.right.get.split(",").toList)
+              } else {
+                return None
+              }
+            case SQL(s) =>
+              val result = DBManager.withResultSetIterator[List[String], String](
+                dbConnectionInfo,
+                s,
+                10, {
+                  result => result.getString(1)
+                }, {
+                  resultSetIterator => resultSetIterator.toList
+                }
+              )
+              if (result.isSuccess) {
+                return Some(result.get)
+              } else {
+                throw new Exception(
+                  s"""
+                     |The variable $str is defined as a SQL Statement $s. Executing the
+                     |SQL statement resulted in an exception ${result.failed.get}
+                     """.stripMargin
+                )
+              }
+            case unknown =>
+              throw new Exception(s"The variable $str is defined but don't know how to parse $unknown.")
+          }
+        } else {
+          throw new Exception(s"The variable $str is not declared.")
+        }
+      case _ =>
+        None
+    }
+    None
   }
 
   /**
@@ -260,31 +306,19 @@ object Parser extends RegexParsers {
   // combinators for parsing select tokens
   private def owner = ownerToken ~ identifierToken
   private def table = tableToken ~ identifierToken
-  private def partition = partitionsToken ~ identifierToken
-  private def subPartition = subPartitionsToken ~ identifierToken
+  private def partition = partitionsToken ~> variableToken
+  private def subPartition = subPartitionsToken ~> variableToken
   private def predicate = predicateToken ~ identifierToken ~ opt(functionToken) ~
     operatorToken ~ opt(quoteToken) ~ variableToken ~ opt(quoteToken)
   private def select = {
     selectToken ~> owner ~ table ~ opt(partition) ~
       opt(subPartition) ~ opt(predicate) ^^ {
         case o ~ t ~ p ~ s ~ pr =>
-          val partitionList: Option[List[String]] = {
-            if (p.isDefined)
-              Some(p.get._2.str.split(",").toList)
-            else
-              None
-          }
-          val subPartitionList: Option[List[String]] = {
-            if (s.isDefined)
-              Some(s.get._2.str.split(",").toList)
-            else
-              None
-          }
           (
             o._2.str,
             t._2.str.split(",").toList,
-            partitionList,
-            subPartitionList,
+            p,
+            s,
             pr
           )
       }
@@ -437,13 +471,21 @@ object Parser extends RegexParsers {
         }
 
         // generate the schema information
+        val partitions = if (sl._3.isDefined) {
+          parsePartitions(declarationMap, dbConnectionInfo, sl._3.get)
+        } else
+          None
+        val subPartitions = if (sl._4.isDefined)
+          parsePartitions(declarationMap, dbConnectionInfo, sl._4.get)
+        else
+          None
         val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
           dbConnectionInfo,
           sqlStatementGenerator.getPartitions(
             sl._1,
             sl._2,
-            sl._3,
-            sl._4
+            partitions,
+            subPartitions
           ),
           o.fetchSize, {
             resultSet =>
