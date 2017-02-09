@@ -1,13 +1,14 @@
 package com.starbucks.analytics.adls
 
-import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, TimeUnit }
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, TimeUnit }
 
+import com.microsoft.azure.datalake.store.oauth2.{ AccessTokenProvider, ClientCredsTokenProvider }
 import com.microsoft.azure.datalake.store.{ ADLFileOutputStream, ADLStoreClient, IfExists }
-import com.microsoft.azure.datalake.store.oauth2.{ AccessTokenProvider, AzureADAuthenticator, AzureADToken, ClientCredsTokenProvider }
 import org.slf4j.{ Logger, LoggerFactory }
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 import scala.util.{ Failure, Success, Try }
 
 /**
@@ -24,9 +25,11 @@ class ADLSUploader(
     octalPermissions:         String,
     desiredBufferSizeInBytes: Int
 ) extends AutoCloseable {
+  private val regex: Regex = """-""".r
+  private val conformedPath: String = regex.replaceAllIn(path, "_")
   private lazy val logger: Logger = LoggerFactory.getLogger(classOf[ADLSUploader])
   private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(
-    path,
+    conformedPath,
     IfExists.OVERWRITE,
     octalPermissions,
     true
