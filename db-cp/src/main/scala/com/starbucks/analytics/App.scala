@@ -7,6 +7,7 @@ import com.starbucks.analytics.db.{ DBManager, Utilities }
 import com.starbucks.analytics.parsercombinator.Parser
 import org.slf4j.{ Logger, LoggerFactory }
 
+import scala.collection.immutable.Iterable
 import scala.collection.parallel.{ ForkJoinTaskSupport, ParMap }
 
 /**
@@ -51,10 +52,46 @@ object App extends App {
     val adlsConnectionInfo = parserResult.right.get._2
     val uploaderOptionsInfo = parserResult.right.get._3
     val sqlFileMap = parserResult.right.get._4
+
+    // Cleanup
+    if (uploaderOptionsInfo.deleteFilesInParent) {
+      val parentPaths: List[String] = sqlFileMap.map(sqlFile => {
+        if (sqlFile._1.isDefined) {
+          val parentPath: String = sqlFile._2.get.substring(
+            0,
+            sqlFile._2.get.lastIndexOf("/")
+          )
+          Some(parentPath)
+        } else {
+          None
+        }
+      })
+        .filter(x => x.isDefined)
+        .map(x => x.get)
+        .toList
+        .distinct
+
+      parentPaths.foreach(parentPath => {
+        rootLogger.info(
+          s"""Cleaning up parent folder $parentPath """.stripMargin
+        )
+
+        ADLSUploader.deleteParentFolder(
+          adlsConnectionInfo.clientId,
+          adlsConnectionInfo.clientKey,
+          adlsConnectionInfo.authenticationTokenEndpoint,
+          adlsConnectionInfo.accountFQDN,
+          parentPath
+        )
+      })
+    }
+
+    // Setup parallelism
     val parallelSqlFileMap: ParMap[Option[(String, List[String])], Option[String]] = sqlFileMap.par
     parallelSqlFileMap.tasksupport = new ForkJoinTaskSupport(
       new scala.concurrent.forkjoin.ForkJoinPool(uploaderOptionsInfo.desiredParallelism)
     )
+    // Uploading
     parallelSqlFileMap.foreach(sqlFile => {
       if (sqlFile._1.isDefined) {
         rootLogger.info(

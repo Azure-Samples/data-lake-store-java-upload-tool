@@ -43,4 +43,5 @@ case class DESIRED_PARALLELISM() extends Token
 case class FETCH_SIZE() extends Token
 case class SEPARATOR() extends Token
 case class ROWSEPARATOR() extends Token
+case class DELETE_FILES_IN_PARENT() extends Token
 case class QUOTE() extends Token

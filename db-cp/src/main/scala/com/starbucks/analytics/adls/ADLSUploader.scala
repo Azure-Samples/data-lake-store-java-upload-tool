@@ -28,18 +28,18 @@ class ADLSUploader(
   private val regex: Regex = """-""".r
   private val conformedPath: String = regex.replaceAllIn(path, "_")
   private lazy val logger: Logger = LoggerFactory.getLogger(classOf[ADLSUploader])
+  private val queue: LinkedBlockingQueue[Array[Byte]] = new LinkedBlockingQueue[Array[Byte]]()
+  private val executorService: ExecutorService = Executors.newSingleThreadExecutor()
+  private val shouldContinueUploading: AtomicBoolean = new AtomicBoolean(true)
+  private val bufferBuilder = mutable.ArrayBuilder.make[Byte]
+  private var currentBufferSize: Int = 0
+  // Create the stream
   private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(
     conformedPath,
     IfExists.OVERWRITE,
     octalPermissions,
     true
   )
-  private val queue: LinkedBlockingQueue[Array[Byte]] = new LinkedBlockingQueue[Array[Byte]]()
-  private val executorService: ExecutorService = Executors.newSingleThreadExecutor()
-  private val shouldContinueUploading: AtomicBoolean = new AtomicBoolean(true)
-  private val bufferBuilder = mutable.ArrayBuilder.make[Byte]
-  private var currentBufferSize: Int = 0
-
   stream.setBufferSize(desiredBufferSizeInBytes)
   // Note: If the capacity is the same as size, the array builder
   // will not copy; rather give the reference. to avoid this
@@ -205,5 +205,35 @@ object ADLSUploader {
     )
 
     new ADLSUploader(adlStoreClient, path, octalPermissions, desiredBufferSizeInBytes)
+  }
+
+  /**
+   * Deletes the folders and the files recursively in the specified
+   * Azure Data Lake path
+   *
+   * @param clientId                    Client Id of the application you registered with active directory
+   * @param clientKey                   Client key of the application you registered with active directory
+   * @param authenticationTokenEndpoint OAuth2 endpoint for the application
+   *                                    you registered with active directory
+   * @param accountFQDN                 Fully Qualified Domain Name of the Azure data lake store
+   * @param path Path to clean up
+   */
+  def deleteParentFolder(
+    clientId:                    String,
+    clientKey:                   String,
+    authenticationTokenEndpoint: String,
+    accountFQDN:                 String,
+    path:                        String
+  ): Unit = {
+    val adlStoreClient: ADLStoreClient = getAzureDataLakeStoreClient(
+      accountFQDN,
+      getAzureADTokenProvider(
+        clientId,
+        clientKey,
+        authenticationTokenEndpoint
+      )
+    )
+
+    adlStoreClient.deleteRecursive(path)
   }
 }

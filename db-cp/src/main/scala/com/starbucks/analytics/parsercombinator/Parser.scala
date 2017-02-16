@@ -226,6 +226,10 @@ object Parser extends RegexParsers {
     "ROWSEPARATOR" ^^ (_ => ROWSEPARATOR())
   }
 
+  private def deleteFilesInParentToken: Parser[DELETE_FILES_IN_PARENT] = positioned {
+    "DELETEFILESINPARENT" ^^ (_ => DELETE_FILES_IN_PARENT())
+  }
+
   private def quoteToken: Parser[QUOTE] = positioned {
     "'" ^^ (_ => QUOTE())
   }
@@ -335,10 +339,11 @@ object Parser extends RegexParsers {
   private def fetchSize = fetchSizeToken ~ literalToken
   private def separator = separatorToken ~ literalToken
   private def rowSeparator = rowSeparatorToken ~ literalToken
+  private def deleteFilesInParent = deleteFilesInParentToken ~ literalToken
   private def options: Parser[UploaderOptionsInfo] = {
     optionsToken ~> desiredBufferSize ~ desiredParallelism ~
-      fetchSize ~ separator ~ rowSeparator ^^ {
-        case b ~ p ~ f ~ s ~ rs =>
+      fetchSize ~ separator ~ rowSeparator ~ opt(deleteFilesInParent) ^^ {
+        case b ~ p ~ f ~ s ~ rs ~ dp =>
           UploaderOptionsInfo(
             b._2.str.toInt * 1024 * 1024,
             p._2.str.toInt,
@@ -375,6 +380,14 @@ object Parser extends RegexParsers {
                   sep = s._2.str.charAt(0)
               }
               sep
+            },
+            {
+              if (dp.isDefined) {
+                val str = dp.get._2.str
+                Try(str.toBoolean).getOrElse(false)
+              } else {
+                false
+              }
             }
           )
       }

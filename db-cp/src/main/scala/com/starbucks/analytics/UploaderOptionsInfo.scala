@@ -10,9 +10,10 @@ package com.starbucks.analytics
  * @param rowSeparator Row Separator
  */
 case class UploaderOptionsInfo(
-  desiredBufferSize:  Int,
-  desiredParallelism: Int,
-  fetchSize:          Int,
-  separator:          Char,
-  rowSeparator:       Char
+  desiredBufferSize:   Int,
+  desiredParallelism:  Int,
+  fetchSize:           Int,
+  separator:           Char,
+  rowSeparator:        Char,
+  deleteFilesInParent: Boolean
 )
