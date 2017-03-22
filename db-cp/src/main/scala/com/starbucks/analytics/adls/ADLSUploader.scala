@@ -1,13 +1,14 @@
 package com.starbucks.analytics.adls
 
-import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, TimeUnit }
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.{ ExecutorService, Executors, LinkedBlockingQueue, TimeUnit }
 
+import com.microsoft.azure.datalake.store.oauth2.{ AccessTokenProvider, ClientCredsTokenProvider }
 import com.microsoft.azure.datalake.store.{ ADLFileOutputStream, ADLStoreClient, IfExists }
-import com.microsoft.azure.datalake.store.oauth2.{ AzureADAuthenticator, AzureADToken }
 import org.slf4j.{ Logger, LoggerFactory }
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 import scala.util.{ Failure, Success, Try }
 
 /**
@@ -24,19 +25,21 @@ class ADLSUploader(
     octalPermissions:         String,
     desiredBufferSizeInBytes: Int
 ) extends AutoCloseable {
+  private val regex: Regex = """-""".r
+  private val conformedPath: String = regex.replaceAllIn(path, "_")
   private lazy val logger: Logger = LoggerFactory.getLogger(classOf[ADLSUploader])
-  private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(
-    path,
-    IfExists.OVERWRITE,
-    octalPermissions,
-    true
-  )
   private val queue: LinkedBlockingQueue[Array[Byte]] = new LinkedBlockingQueue[Array[Byte]]()
   private val executorService: ExecutorService = Executors.newSingleThreadExecutor()
   private val shouldContinueUploading: AtomicBoolean = new AtomicBoolean(true)
   private val bufferBuilder = mutable.ArrayBuilder.make[Byte]
   private var currentBufferSize: Int = 0
-
+  // Create the stream
+  private lazy val stream: ADLFileOutputStream = adlStoreClient.createFile(
+    conformedPath,
+    IfExists.OVERWRITE,
+    octalPermissions,
+    true
+  )
   stream.setBufferSize(desiredBufferSizeInBytes)
   // Note: If the capacity is the same as size, the array builder
   // will not copy; rather give the reference. to avoid this
@@ -50,6 +53,11 @@ class ADLSUploader(
       while (shouldContinueUploading.get() && !terminate) {
         Option(queue.poll(200, TimeUnit.MILLISECONDS)) match {
           case Some(Array.emptyByteArray) =>
+            logger.debug(
+              s"""
+                |Empty array received. Sending terminate signal.
+              """.stripMargin
+            )
             terminate = true
           case (Some(data)) =>
             upload(data)
@@ -132,33 +140,33 @@ object ADLSUploader {
    *                                    you registered with active directory
    * @return Azure AD Token
    */
-  private def getAzureADToken(
+  private def getAzureADTokenProvider(
     clientId:                    String,
     clientKey:                   String,
     authenticationTokenEndpoint: String
-  ): AzureADToken = {
-    val token: AzureADToken = AzureADAuthenticator.getTokenUsingClientCreds(
+  ): AccessTokenProvider = {
+    val tokenProvider = new ClientCredsTokenProvider(
       authenticationTokenEndpoint,
       clientId,
       clientKey
     )
-    token
+    tokenProvider
   }
 
   /**
    * Returns a client to connect to Azure Data Lake Store.
    *
    * @param accountFQDN  Fully Qualified Domain Name of the Azure data lake store
-   * @param azureADToken Azure AD Token. You can use getAzureADToken to get a valid token.
+   * @param azureADTokenProvider Azure AD Token Provider . You can use getAzureADToken to get a valid token.
    * @return Azure Data Lake Store client
    */
   private def getAzureDataLakeStoreClient(
-    accountFQDN:  String,
-    azureADToken: AzureADToken
+    accountFQDN:          String,
+    azureADTokenProvider: AccessTokenProvider
   ): ADLStoreClient = {
     ADLStoreClient.createClient(
       accountFQDN,
-      azureADToken
+      azureADTokenProvider
     )
   }
 
@@ -189,7 +197,7 @@ object ADLSUploader {
     // Better to abstract this per upload to avoid exceptions and reduce complexity.
     val adlStoreClient: ADLStoreClient = getAzureDataLakeStoreClient(
       accountFQDN,
-      getAzureADToken(
+      getAzureADTokenProvider(
         clientId,
         clientKey,
         authenticationTokenEndpoint
@@ -197,5 +205,35 @@ object ADLSUploader {
     )
 
     new ADLSUploader(adlStoreClient, path, octalPermissions, desiredBufferSizeInBytes)
+  }
+
+  /**
+   * Deletes the folders and the files recursively in the specified
+   * Azure Data Lake path
+   *
+   * @param clientId                    Client Id of the application you registered with active directory
+   * @param clientKey                   Client key of the application you registered with active directory
+   * @param authenticationTokenEndpoint OAuth2 endpoint for the application
+   *                                    you registered with active directory
+   * @param accountFQDN                 Fully Qualified Domain Name of the Azure data lake store
+   * @param path Path to clean up
+   */
+  def deleteParentFolder(
+    clientId:                    String,
+    clientKey:                   String,
+    authenticationTokenEndpoint: String,
+    accountFQDN:                 String,
+    path:                        String
+  ): Unit = {
+    val adlStoreClient: ADLStoreClient = getAzureDataLakeStoreClient(
+      accountFQDN,
+      getAzureADTokenProvider(
+        clientId,
+        clientKey,
+        authenticationTokenEndpoint
+      )
+    )
+
+    adlStoreClient.deleteRecursive(path)
   }
 }

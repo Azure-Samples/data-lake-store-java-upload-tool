@@ -7,10 +7,13 @@ package com.starbucks.analytics
  * @param desiredParallelism Desired level of parallelism
  * @param fetchSize Number of rows to be fetched from the database
  * @param separator Column Separator
+ * @param rowSeparator Row Separator
  */
 case class UploaderOptionsInfo(
-  desiredBufferSize:  Int,
-  desiredParallelism: Int,
-  fetchSize:          Int,
-  separator:          Char
+  desiredBufferSize:   Int,
+  desiredParallelism:  Int,
+  fetchSize:           Int,
+  separator:           Char,
+  rowSeparator:        Char,
+  deleteFilesInParent: Boolean
 )

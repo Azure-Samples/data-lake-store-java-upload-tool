@@ -34,3 +34,7 @@ project/target/
 logs/
 /src/main/resources/FACTS.sql
 /src/main/resources/DIMENSIONS.sql
+/src/main/resources/DIMENSION_FUNCTION.sql
+/src/main/resources/FACTS_COMMENTS.sql
+/src/main/resources/DIMENSIONS_MS.sql
+/src/main/resources/DIMENSIONS_SUBQ.sql

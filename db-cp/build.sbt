@@ -7,7 +7,7 @@ name in ThisBuild := "db-cp"
 
 organization in ThisBuild := "com.starbucks.analytics"
 
-version in ThisBuild := "0.3"
+version in ThisBuild := "0.9"
 
 licenses in ThisBuild += ("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 
@@ -24,6 +24,7 @@ libraryDependencies in ThisBuild ++= Seq(
   slf4j_api,
   logback,
   scopt,
+  guice,
   azure_data_lake_store_sdk)
 
 
@@ -32,7 +33,9 @@ resolvers in ThisBuild ++= Seq(
   "releases" at "https://oss.sonatype.org/content/repositories/releases"
 )
 
-unmanagedJars in Compile += file("lib/ojdbc7.jar")
+unmanagedJars in Compile ++= Seq(
+  file("lib/ojdbc7.jar"),
+  file("lib/sqljdbc42.jar"))
 
 SbtScalariform.scalariformSettings
 

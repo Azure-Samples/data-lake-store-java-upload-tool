@@ -15,6 +15,7 @@ case class INTERPOLATION(str: String) extends Token
 case class SQL(str: String) extends Token
 case class OPERATOR(op: String) extends Token
 case class FUNCTION(fun: String) extends Token
+case class COMMENT(str: String) extends Token
 case class ASSIGNMENT() extends Token
 // Parameter Tokens
 case class WITH() extends Token
@@ -41,4 +42,6 @@ case class DESIRED_BUFFER_SIZE() extends Token
 case class DESIRED_PARALLELISM() extends Token
 case class FETCH_SIZE() extends Token
 case class SEPARATOR() extends Token
+case class ROWSEPARATOR() extends Token
+case class DELETE_FILES_IN_PARENT() extends Token
 case class QUOTE() extends Token

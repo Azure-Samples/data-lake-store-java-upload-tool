@@ -2,12 +2,13 @@ package com.starbucks.analytics.parsercombinator
 
 import java.io.Reader
 
+import com.google.inject.Guice
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.Oracle.OracleSqlGenerator
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo }
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator }
+import com.starbucks.analytics.di.SqlGeneratorModule
 
-import scala.collection.mutable
+import scala.collection.{ immutable, mutable }
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
@@ -30,6 +31,54 @@ object Parser extends RegexParsers {
     })
   }
 
+  def parsePartitions(
+    declarationMap:   mutable.Map[String, Token],
+    dbConnectionInfo: DBConnectionInfo,
+    token:            Token
+  ): Option[List[String]] = {
+    token match {
+      case VARIABLE(str) =>
+        if (declarationMap.contains(str)) {
+          declarationMap(str) match {
+            case INTERPOLATION(i) =>
+              val result = InterpolationParser.parse(i, dbConnectionInfo, declarationMap)
+              if (result.isRight) {
+                return Some(result.right.get.split(",").toList)
+              } else {
+                return None
+              }
+            case SQL(s) =>
+              val result = DBManager.withResultSetIterator[List[String], String](
+                dbConnectionInfo,
+                s,
+                10, {
+                  result => result.getString(1)
+                }, {
+                  resultSetIterator => resultSetIterator.toList
+                }
+              )
+              if (result.isSuccess) {
+                return Some(result.get)
+              } else {
+                throw new Exception(
+                  s"""
+                     |The variable $str is defined as a SQL Statement $s. Executing the
+                     |SQL statement resulted in an exception ${result.failed.get}
+                     """.stripMargin
+                )
+              }
+            case unknown =>
+              throw new Exception(s"The variable $str is defined but don't know how to parse $unknown.")
+          }
+        } else {
+          throw new Exception(s"The variable $str is not declared.")
+        }
+      case _ =>
+        None
+    }
+    None
+  }
+
   /**
    * Parsers the input stream and presents the results
    * of lexing the content in the stream
@@ -38,7 +87,7 @@ object Parser extends RegexParsers {
    * @return Result of lexing
    */
   def parse(reader: Reader): Either[UploaderParserError, (DBConnectionInfo, ADLSConnectionInfo, UploaderOptionsInfo, Map[Option[(String, List[String])], Option[String]])] = {
-    val parsed = parseAll(block, reader)
+    val parsed = parseAll(fileBlock, reader)
     parsed match {
       case NoSuccess(msg, next) => Left(
         UploaderParserError(
@@ -51,6 +100,10 @@ object Parser extends RegexParsers {
   }
 
   // Combinators for lexing the language
+  private def commentToken: Parser[COMMENT] = {
+    """(/\*([^*]|[\r\n]|(\*+([^*/]|[\r\n])))*\*+/)|(//.*)""".stripMargin.r ^^ { str => COMMENT(str) }
+  }
+
   private def identifierToken: Parser[IDENTIFIER] = {
     "[a-zA-Z0-9_,\\/\\.]*".r ^^ { str => IDENTIFIER(str) }
   }
@@ -113,7 +166,6 @@ object Parser extends RegexParsers {
     "TARGET" ^^ (_ => TARGET())
   }
 
-  //TODO: Use the USING Token to dynamically inject SQL Provider
   private def usingToken: Parser[USING] = positioned {
     "USING" ^^ (_ => USING())
   }
@@ -168,6 +220,14 @@ object Parser extends RegexParsers {
 
   private def separatorToken: Parser[SEPARATOR] = positioned {
     "SEPARATOR" ^^ (_ => SEPARATOR())
+  }
+
+  private def rowSeparatorToken: Parser[ROWSEPARATOR] = positioned {
+    "ROWSEPARATOR" ^^ (_ => ROWSEPARATOR())
+  }
+
+  private def deleteFilesInParentToken: Parser[DELETE_FILES_IN_PARENT] = positioned {
+    "DELETEFILESINPARENT" ^^ (_ => DELETE_FILES_IN_PARENT())
   }
 
   private def quoteToken: Parser[QUOTE] = positioned {
@@ -244,34 +304,25 @@ object Parser extends RegexParsers {
       }
   }
 
+  // combinator for parsing the sql generator
+  private def sqlGenerator = usingToken ~ identifierToken
+
   // combinators for parsing select tokens
   private def owner = ownerToken ~ identifierToken
   private def table = tableToken ~ identifierToken
-  private def partition = partitionsToken ~ identifierToken
-  private def subPartition = subPartitionsToken ~ identifierToken
+  private def partition = partitionsToken ~> variableToken
+  private def subPartition = subPartitionsToken ~> variableToken
   private def predicate = predicateToken ~ identifierToken ~ opt(functionToken) ~
     operatorToken ~ opt(quoteToken) ~ variableToken ~ opt(quoteToken)
   private def select = {
     selectToken ~> owner ~ table ~ opt(partition) ~
       opt(subPartition) ~ opt(predicate) ^^ {
         case o ~ t ~ p ~ s ~ pr =>
-          val partitionList: Option[List[String]] = {
-            if (p.isDefined)
-              Some(p.get._2.str.split(",").toList)
-            else
-              None
-          }
-          val subPartitionList: Option[List[String]] = {
-            if (s.isDefined)
-              Some(s.get._2.str.split(",").toList)
-            else
-              None
-          }
           (
             o._2.str,
             t._2.str.split(",").toList,
-            partitionList,
-            subPartitionList,
+            p,
+            s,
             pr
           )
       }
@@ -287,23 +338,65 @@ object Parser extends RegexParsers {
   private def desiredParallelism = desiredParallelismToken ~ literalToken
   private def fetchSize = fetchSizeToken ~ literalToken
   private def separator = separatorToken ~ literalToken
+  private def rowSeparator = rowSeparatorToken ~ literalToken
+  private def deleteFilesInParent = deleteFilesInParentToken ~ literalToken
   private def options: Parser[UploaderOptionsInfo] = {
-    optionsToken ~> desiredBufferSize ~
-      desiredParallelism ~ fetchSize ~ separator ^^ {
-        case b ~ p ~ f ~ s =>
+    optionsToken ~> desiredBufferSize ~ desiredParallelism ~
+      fetchSize ~ separator ~ rowSeparator ~ opt(deleteFilesInParent) ^^ {
+        case b ~ p ~ f ~ s ~ rs ~ dp =>
           UploaderOptionsInfo(
             b._2.str.toInt * 1024 * 1024,
             p._2.str.toInt,
             f._2.str.toInt,
-            s._2.str.charAt(0)
+            // Note: Support non-printable characters
+            // Converting the string to integer and translating
+            // to Char gives the Hex value. If not, use the
+            // first character of the string passed in as
+            // the parameter for separator
+            {
+              var sep: Char = 0x00
+              val conv = Try(Integer.parseInt(s._2.str, 16))
+              if (conv.isSuccess) {
+                sep = conv.get.toChar
+              } else {
+                val m: Option[String] = "\t".r.findFirstIn(s._2.str)
+                if (m.isDefined)
+                  sep = '\t'
+                else
+                  sep = s._2.str.charAt(0)
+              }
+              sep
+            },
+            {
+              var sep: Char = 0x00
+              val conv = Try(Integer.parseInt(rs._2.str, 16))
+              if (conv.isSuccess) {
+                sep = conv.get.toChar
+              } else {
+                val m: Option[String] = "\n".r.findFirstIn(s._2.str)
+                if (m.isDefined)
+                  sep = '\n'
+                else
+                  sep = s._2.str.charAt(0)
+              }
+              sep
+            },
+            {
+              if (dp.isDefined) {
+                val str = dp.get._2.str
+                Try(str.toBoolean).getOrElse(false)
+              } else {
+                false
+              }
+            }
           )
       }
   }
 
   // Combinator that brings it all together
   private def block = {
-    declarations ~ setup ~ select ~ targetPath ~ options ^^ {
-      case d ~ s ~ sl ~ t ~ o =>
+    declarations ~ setup ~ sqlGenerator ~ select ~ targetPath ~ options ^^ {
+      case d ~ s ~ sg ~ sl ~ t ~ o =>
         var sqlStatements: Map[Option[(String, List[String])], Option[String]] =
           Map[Option[(String, List[String])], Option[String]]()
 
@@ -316,7 +409,19 @@ object Parser extends RegexParsers {
         val dbConnectionInfo = s._1
         val adlsConnectionInfo = s._2
 
-        //TODO: Use the USING Token to dynamically inject SQL Provider
+        // parse the sql generator and dynamically inject the right provider
+        val sqlStatementGenerator: SqlGenerator = sg match {
+          case _ ~ id =>
+            val injector = Guice.createInjector(new SqlGeneratorModule())
+            import net.codingwell.scalaguice.InjectorExtensions._
+            val map = injector.instance[immutable.Map[String, SqlGenerator]]
+            if (map.contains(id.str.toUpperCase)) {
+              map(id.str.toUpperCase)
+            } else {
+              throw new Exception(s"SQL Generator ${id.str.toUpperCase} is not defined")
+            }
+          case _ => throw new Exception(s"Unknown sql generator $sg")
+        }
 
         // Parse the predicates
         var predicateList = List[String]()
@@ -379,13 +484,21 @@ object Parser extends RegexParsers {
         }
 
         // generate the schema information
+        val partitions = if (sl._3.isDefined) {
+          parsePartitions(declarationMap, dbConnectionInfo, sl._3.get)
+        } else
+          None
+        val subPartitions = if (sl._4.isDefined)
+          parsePartitions(declarationMap, dbConnectionInfo, sl._4.get)
+        else
+          None
         val schemaList = DBManager.withResultSetIterator[List[SchemaInfo], SchemaInfo](
           dbConnectionInfo,
-          OracleSqlGenerator.getPartitions(
+          sqlStatementGenerator.getPartitions(
             sl._1,
             sl._2,
-            sl._3,
-            sl._4
+            partitions,
+            subPartitions
           ),
           o.fetchSize, {
             resultSet =>
@@ -405,8 +518,8 @@ object Parser extends RegexParsers {
             val schema = s._1
             val pred = s._2
             // Add system variables to the symbol/declaration map
-            declarationMap("OWNER") = LITERAL(schema.owner)
-            declarationMap("TABLE") = LITERAL(schema.tableName)
+            declarationMap("OWNER") = LITERAL(schema.owner.toLowerCase)
+            declarationMap("TABLE") = LITERAL(schema.tableName.toLowerCase)
             declarationMap(predicateAlias) = pred match {
               case Some(pa) =>
                 LITERAL(pa)
@@ -414,15 +527,15 @@ object Parser extends RegexParsers {
                 EMPTY()
             }
             declarationMap("PARTITION") = {
-              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get) else EMPTY()
+              if (schema.partitionName.isDefined) LITERAL(schema.partitionName.get.toLowerCase) else EMPTY()
             }
             declarationMap("SUBPARTITION") = {
-              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get) else EMPTY()
+              if (schema.subPartitionName.isDefined) LITERAL(schema.subPartitionName.get.toLowerCase) else EMPTY()
             }
 
             val columnList: Try[List[String]] = DBManager.withResultSetIterator[List[String], String](
               dbConnectionInfo,
-              OracleSqlGenerator.getColumnNames(
+              sqlStatementGenerator.getColumnNames(
                 schema.owner,
                 schema.tableName
               ),
@@ -434,7 +547,7 @@ object Parser extends RegexParsers {
             )
             if (columnList.isSuccess) {
               Some((
-                OracleSqlGenerator.getData(schema, columnList.get, {
+                sqlStatementGenerator.getData(schema, columnList.get, {
                   if (pred.isDefined) {
                     val builder = new StringBuilder
                     builder ++= predicateColumn
@@ -481,5 +594,9 @@ object Parser extends RegexParsers {
         }
         (dbConnectionInfo, adlsConnectionInfo, o, sqlStatements)
     }
+  }
+
+  private def fileBlock = {
+    opt(commentToken) ~> block <~ opt(commentToken)
   }
 }
