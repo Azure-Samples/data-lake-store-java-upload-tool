@@ -7,7 +7,7 @@ object Dependencies {
   lazy val slf4j_api = "org.slf4j" % "slf4j-api" % "1.7.21"
   lazy val logback = "ch.qos.logback" % "logback-classic" % "1.1.7"
   lazy val scopt = "com.github.scopt" %% "scopt" % "3.5.0"
-  lazy val azure_data_lake_store_sdk = "com.microsoft.azure" % "azure-data-lake-store-sdk" % "2.0.4-SNAPSHOT"
+  lazy val azure_data_lake_store_sdk = "com.microsoft.azure" % "azure-data-lake-store-sdk" % "2.1.4"
   lazy val guice = "net.codingwell" %% "scala-guice" % "4.1.0"
 
   // Provided scope:
