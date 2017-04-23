@@ -7,7 +7,7 @@ name in ThisBuild := "db-cp"
 
 organization in ThisBuild := "com.starbucks.analytics"
 
-version in ThisBuild := "0.9"
+version in ThisBuild := "1.0"
 
 licenses in ThisBuild += ("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 
