@@ -11,6 +11,7 @@ case class EMPTY() extends Token
 case class LITERAL(str: String) extends Token
 case class IDENTIFIER(str: String) extends Token
 case class VARIABLE(str: String) extends Token
+case class ENVIRONMENT_VARIABLE(str: String) extends Token
 case class INTERPOLATION(str: String) extends Token
 case class SQL(str: String) extends Token
 case class OPERATOR(op: String) extends Token

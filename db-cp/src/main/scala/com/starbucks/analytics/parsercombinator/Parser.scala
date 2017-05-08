@@ -5,10 +5,10 @@ import java.io.Reader
 import com.google.inject.Guice
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator }
+import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator}
 import com.starbucks.analytics.di.SqlGeneratorModule
 
-import scala.collection.{ immutable, mutable }
+import scala.collection.{immutable, mutable}
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
@@ -119,6 +119,13 @@ object Parser extends RegexParsers {
     "^\\$[a-zA-Z0-9_]*".r ^^ { str =>
       val content = str.substring(1)
       VARIABLE(content)
+    }
+  }
+
+  private def environmentVariableToken: Parser[ENVIRONMENT_VARIABLE] = {
+    "^~[a-zA-Z0-9_]*".r ^^ { str =>
+      val content = str.substring(1)
+      ENVIRONMENT_VARIABLE(content)
     }
   }
 
@@ -251,7 +258,7 @@ object Parser extends RegexParsers {
 
   def declaration: Parser[(String, Token)] = {
     variableToken ~ assignmentToken ~
-      (interpolationToken | sqlToken) ^^ {
+      (interpolationToken | sqlToken | environmentVariableToken) ^^ {
         case x ~ _ ~ z => (x.str, z)
       }
   }
@@ -268,36 +275,91 @@ object Parser extends RegexParsers {
   }
 
   // combinators for parsing setup tokens
-  private def username = usernameToken ~ literalToken
+  private def username = usernameToken ~ (literalToken | variableToken)
   private def password = passwordToken ~ (literalToken | variableToken)
-  private def driver = driverToken ~ literalToken
-  private def source = sourceToken ~ literalToken
-  private def clientId = clientIdToken ~ literalToken
-  private def authTokenEndPoint = authToKenEndPointToken ~ literalToken
-  private def clientKey = clientKeyToken ~ literalToken
+  private def driver = driverToken ~ (literalToken | variableToken)
+  private def source = sourceToken ~ (literalToken | variableToken)
+  private def clientId = clientIdToken ~ (literalToken | variableToken)
+  private def authTokenEndPoint = authToKenEndPointToken ~ (literalToken | variableToken)
+  private def clientKey = clientKeyToken ~ (literalToken | variableToken)
   private def target = targetToken ~ literalToken
   private def setup: Parser[(DBConnectionInfo, ADLSConnectionInfo)] = {
     withToken ~> username ~ password ~ driver ~ source ~
       clientId ~ authTokenEndPoint ~ clientKey ~ target ^^ {
         case u ~ p ~ d ~ s ~ c ~ a ~ k ~ t =>
           val dbConnectionInfo = DBConnectionInfo(
-            driver = d._2.str,
-            connectionStringUri = s._2.str,
-            username = u._2.str,
+            driver = {
+            d._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.env.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
+            connectionStringUri = {
+            s._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.env.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
+            username = {
+            u._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.env.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
             password = {
             p._2 match {
               case LITERAL(literal) =>
                 literal
-              // TODO: Add support for variables
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.env.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
           }
           )
           val adlsConnectionInfo = ADLSConnectionInfo(
-            c._2.str,
-            k._2.str,
-            a._2.str,
+            {
+              c._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.env.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
+            {
+              k._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.env.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
+            {
+              a._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.env.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
             t._2.str
           )
           (dbConnectionInfo, adlsConnectionInfo)
