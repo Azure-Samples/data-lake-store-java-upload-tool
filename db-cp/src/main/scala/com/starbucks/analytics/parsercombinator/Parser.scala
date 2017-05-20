@@ -5,10 +5,10 @@ import java.io.Reader
 import com.google.inject.Guice
 import com.starbucks.analytics._
 import com.starbucks.analytics.adls.ADLSConnectionInfo
-import com.starbucks.analytics.db.{DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator}
+import com.starbucks.analytics.db.{ DBConnectionInfo, DBManager, SchemaInfo, SqlGenerator }
 import com.starbucks.analytics.di.SqlGeneratorModule
 
-import scala.collection.{immutable, mutable}
+import scala.collection.{ immutable, mutable }
 import scala.language.postfixOps
 import scala.util.Try
 import scala.util.parsing.combinator.RegexParsers
@@ -258,7 +258,7 @@ object Parser extends RegexParsers {
 
   def declaration: Parser[(String, Token)] = {
     variableToken ~ assignmentToken ~
-      (interpolationToken | sqlToken | environmentVariableToken) ^^ {
+      (interpolationToken | sqlToken) ^^ {
         case x ~ _ ~ z => (x.str, z)
       }
   }
@@ -275,14 +275,14 @@ object Parser extends RegexParsers {
   }
 
   // combinators for parsing setup tokens
-  private def username = usernameToken ~ (literalToken | variableToken)
-  private def password = passwordToken ~ (literalToken | variableToken)
-  private def driver = driverToken ~ (literalToken | variableToken)
-  private def source = sourceToken ~ (literalToken | variableToken)
-  private def clientId = clientIdToken ~ (literalToken | variableToken)
-  private def authTokenEndPoint = authToKenEndPointToken ~ (literalToken | variableToken)
-  private def clientKey = clientKeyToken ~ (literalToken | variableToken)
-  private def target = targetToken ~ literalToken
+  private def username = usernameToken ~ (literalToken | environmentVariableToken)
+  private def password = passwordToken ~ (literalToken | environmentVariableToken)
+  private def driver = driverToken ~ (literalToken | environmentVariableToken)
+  private def source = sourceToken ~ (literalToken | environmentVariableToken)
+  private def clientId = clientIdToken ~ (literalToken | environmentVariableToken)
+  private def authTokenEndPoint = authToKenEndPointToken ~ (literalToken | environmentVariableToken)
+  private def clientKey = clientKeyToken ~ (literalToken | environmentVariableToken)
+  private def target = targetToken ~ (literalToken | environmentVariableToken)
   private def setup: Parser[(DBConnectionInfo, ADLSConnectionInfo)] = {
     withToken ~> username ~ password ~ driver ~ source ~
       clientId ~ authTokenEndPoint ~ clientKey ~ target ^^ {
@@ -293,7 +293,7 @@ object Parser extends RegexParsers {
               case LITERAL(literal) =>
                 literal
               case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                sys.env.getOrElse(environmentVariable, "")
+                sys.props.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
@@ -303,7 +303,7 @@ object Parser extends RegexParsers {
               case LITERAL(literal) =>
                 literal
               case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                sys.env.getOrElse(environmentVariable, "")
+                sys.props.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
@@ -313,7 +313,7 @@ object Parser extends RegexParsers {
               case LITERAL(literal) =>
                 literal
               case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                sys.env.getOrElse(environmentVariable, "")
+                sys.props.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
@@ -323,7 +323,7 @@ object Parser extends RegexParsers {
               case LITERAL(literal) =>
                 literal
               case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                sys.env.getOrElse(environmentVariable, "")
+                sys.props.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
@@ -335,7 +335,7 @@ object Parser extends RegexParsers {
                 case LITERAL(literal) =>
                   literal
                 case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                  sys.env.getOrElse(environmentVariable, "")
+                  sys.props.getOrElse(environmentVariable, "")
                 case _ =>
                   ""
               }
@@ -345,7 +345,7 @@ object Parser extends RegexParsers {
                 case LITERAL(literal) =>
                   literal
                 case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                  sys.env.getOrElse(environmentVariable, "")
+                  sys.props.getOrElse(environmentVariable, "")
                 case _ =>
                   ""
               }
@@ -355,12 +355,21 @@ object Parser extends RegexParsers {
                 case LITERAL(literal) =>
                   literal
                 case ENVIRONMENT_VARIABLE(environmentVariable) =>
-                  sys.env.getOrElse(environmentVariable, "")
+                  sys.props.getOrElse(environmentVariable, "")
                 case _ =>
                   ""
               }
             },
-            t._2.str
+            {
+              t._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.props.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            }
           )
           (dbConnectionInfo, adlsConnectionInfo)
       }
