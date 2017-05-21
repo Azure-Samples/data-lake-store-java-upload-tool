@@ -122,6 +122,13 @@ object Parser extends RegexParsers {
     }
   }
 
+  private def environmentVariableToken: Parser[ENVIRONMENT_VARIABLE] = {
+    "^~[a-zA-Z0-9_]*".r ^^ { str =>
+      val content = str.substring(1)
+      ENVIRONMENT_VARIABLE(content)
+    }
+  }
+
   private def functionToken: Parser[FUNCTION] = {
     "^`[a-zA-Z0-9\\-_,\\/\\.\\(\\)'\\s]*".r ^^ { str => FUNCTION(str.substring(1)) }
   }
@@ -268,37 +275,101 @@ object Parser extends RegexParsers {
   }
 
   // combinators for parsing setup tokens
-  private def username = usernameToken ~ literalToken
-  private def password = passwordToken ~ (literalToken | variableToken)
-  private def driver = driverToken ~ literalToken
-  private def source = sourceToken ~ literalToken
-  private def clientId = clientIdToken ~ literalToken
-  private def authTokenEndPoint = authToKenEndPointToken ~ literalToken
-  private def clientKey = clientKeyToken ~ literalToken
-  private def target = targetToken ~ literalToken
+  private def username = usernameToken ~ (literalToken | environmentVariableToken)
+  private def password = passwordToken ~ (literalToken | environmentVariableToken)
+  private def driver = driverToken ~ (literalToken | environmentVariableToken)
+  private def source = sourceToken ~ (literalToken | environmentVariableToken)
+  private def clientId = clientIdToken ~ (literalToken | environmentVariableToken)
+  private def authTokenEndPoint = authToKenEndPointToken ~ (literalToken | environmentVariableToken)
+  private def clientKey = clientKeyToken ~ (literalToken | environmentVariableToken)
+  private def target = targetToken ~ (literalToken | environmentVariableToken)
   private def setup: Parser[(DBConnectionInfo, ADLSConnectionInfo)] = {
     withToken ~> username ~ password ~ driver ~ source ~
       clientId ~ authTokenEndPoint ~ clientKey ~ target ^^ {
         case u ~ p ~ d ~ s ~ c ~ a ~ k ~ t =>
           val dbConnectionInfo = DBConnectionInfo(
-            driver = d._2.str,
-            connectionStringUri = s._2.str,
-            username = u._2.str,
+            driver = {
+            d._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.props.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
+            connectionStringUri = {
+            s._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.props.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
+            username = {
+            u._2 match {
+              case LITERAL(literal) =>
+                literal
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.props.getOrElse(environmentVariable, "")
+              case _ =>
+                ""
+            }
+          },
             password = {
             p._2 match {
               case LITERAL(literal) =>
                 literal
-              // TODO: Add support for variables
+              case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                sys.props.getOrElse(environmentVariable, "")
               case _ =>
                 ""
             }
           }
           )
           val adlsConnectionInfo = ADLSConnectionInfo(
-            c._2.str,
-            k._2.str,
-            a._2.str,
-            t._2.str
+            {
+              c._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.props.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
+            {
+              k._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.props.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
+            {
+              a._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.props.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            },
+            {
+              t._2 match {
+                case LITERAL(literal) =>
+                  literal
+                case ENVIRONMENT_VARIABLE(environmentVariable) =>
+                  sys.props.getOrElse(environmentVariable, "")
+                case _ =>
+                  ""
+              }
+            }
           )
           (dbConnectionInfo, adlsConnectionInfo)
       }
