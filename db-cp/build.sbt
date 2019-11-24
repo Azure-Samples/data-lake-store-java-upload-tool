@@ -7,7 +7,7 @@ name in ThisBuild := "db-cp"
 
 organization in ThisBuild := "com.starbucks.analytics"
 
-version in ThisBuild := "1.1"
+version in ThisBuild := "1.2"
 
 licenses in ThisBuild += ("Apache License, Version 2.0", url("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 
@@ -34,7 +34,7 @@ resolvers in ThisBuild ++= Seq(
 )
 
 unmanagedJars in Compile ++= Seq(
-  file("lib/ojdbc7.jar"),
+  file("lib/ojdbc8.jar"),
   file("lib/sqljdbc42.jar"))
 
 SbtScalariform.scalariformSettings

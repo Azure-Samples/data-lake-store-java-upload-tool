@@ -99,7 +99,9 @@ object OracleSqlGenerator extends SqlGenerator {
              """.stripMargin
               case None =>
                 s"""
-                   |SELECT ${columns mkString ","}
+                   |SELECT
+                   | /*+ PARALLEL (${schemaInfo.tableName}, 1) */
+                   | ${columns mkString ","}
                    | FROM ${schemaInfo.owner}.${schemaInfo.tableName}
              """.stripMargin
             }
